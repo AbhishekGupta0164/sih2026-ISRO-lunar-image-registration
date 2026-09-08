@@ -52,6 +52,7 @@ export interface AppContextType {
   setGeometryModel: (val: string) => void;
   clearUploads: () => void;
   loadSyntheticPair: () => Promise<void>;
+  generateTargetFromReference: () => Promise<void>;
   runRegistration: () => Promise<void>;
   addLog: (message: string, type?: 'info' | 'success' | 'error') => void;
   clearLogs: () => void;
@@ -339,7 +340,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
     const blob = await res.blob();
-    return new File([blob], filename, { type: blob.type || 'image/png' });
+    const safeName = (filename || 'image.png')
+      .replace(/[\\/:*?"<>|\s()°]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    const cleanName = safeName.endsWith('.png') || safeName.endsWith('.tif') || safeName.endsWith('.jpg')
+      ? safeName
+      : `${safeName}.png`;
+    return new File([blob], cleanName, { type: blob.type || 'image/png' });
   };
 
   // Pre-load File buffers for default images on mount
@@ -419,6 +426,73 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const msg = err instanceof Error ? err.message : 'Failed to load synthetic pair';
       addLog(`Error loading synthetic pair: ${msg}`, 'error');
       addToast('Could not load synthetic pair from backend server.', 'error', 'Fetch Error');
+    }
+  };
+
+  const generateTargetFromReference = async () => {
+    if (!referenceImage?.file && !referenceImage?.previewUrl) {
+      addToast('Please upload a Reference image first.', 'warn', 'Missing Reference');
+      return;
+    }
+    try {
+      setIsComplete(false);
+      setPipelineProgress(0);
+      setActiveStepIndex(-1);
+      setResults(emptyResults);
+      addLog(`Generating matching Target raster from ${referenceImage.name}…`, 'info');
+      let baseF = referenceImage.file;
+      if (!baseF && referenceImage.previewUrl) {
+        baseF = await createFileFromUrl(referenceImage.previewUrl, referenceImage.name);
+      }
+      const data = await seleneApi.generateSyntheticPair({
+        baseImage: baseF,
+        rotationDeg: 5.5,
+        scale: 0.94,
+        tx: 20.0,
+        ty: 12.0,
+        gamma: 0.8,
+        targetWidth: 1024,
+        targetHeight: 1024,
+      });
+
+      const refUrl = seleneApi.productUrl(data.reference_image_url || '/synthetic/reference.png');
+      const srcUrl = seleneApi.productUrl(data.source_image_url || '/synthetic/synthetic_target.png');
+
+      const [refF, srcF] = await Promise.all([
+        createFileFromUrl(refUrl, 'reference_crop.png'),
+        createFileFromUrl(srcUrl, 'matched_target.png'),
+      ]);
+
+      setReferenceImage({
+        name: `${referenceImage.name} (Matched Base)`,
+        size: refF.size,
+        type: 'image/png',
+        sensor: referenceImage.sensor || 'Chandrayaan-2 OHRC',
+        gsd: referenceImage.gsd || '0.25 m/px',
+        sunAngle: '142.1° / 34.5°',
+        previewUrl: refUrl,
+        file: refF,
+        dimensions: '1024 × 1024 px',
+      });
+
+      setSourceImage({
+        name: `${referenceImage.name} (Warped Target - 5.5° Rot)`,
+        size: srcF.size,
+        type: 'image/png',
+        sensor: 'Chandrayaan-2 OHRC (Simulated Orbit Pass)',
+        gsd: referenceImage.gsd || '0.25 m/px',
+        sunAngle: '284.3° / 32.1°',
+        previewUrl: srcUrl,
+        file: srcF,
+        dimensions: '1024 × 1024 px',
+      });
+
+      addLog('Matching Target generated from your Reference image. Overlapping crater pair ready for real registration.', 'success');
+      addToast('Matching Target raster generated from your Reference image!', 'success', 'Pair Ready');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Generation failed';
+      addLog(`Failed to generate target from reference: ${msg}`, 'error');
+      addToast('Could not generate target pair from image.', 'error', 'Generation Error');
     }
   };
 
@@ -540,6 +614,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setGeometryModel,
         clearUploads,
         loadSyntheticPair,
+        generateTargetFromReference,
         runRegistration,
         addLog,
         clearLogs,

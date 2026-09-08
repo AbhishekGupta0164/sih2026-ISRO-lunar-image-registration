@@ -27,12 +27,31 @@ from api.routes.jobs import JOBS_DB, init_job, run_job_bg, job_log_append
 router = APIRouter()
 
 
+import re
+
+def _clean_filename(raw_name: str | None, prefix: str) -> str:
+    if not raw_name:
+        return f"{prefix}.png"
+    base = Path(raw_name).name
+    # Strip invalid filesystem characters and path separators
+    cleaned = re.sub(r'[\\/:*?"<>|\s()°]+', '_', base).strip('_.')
+    suffix = Path(cleaned).suffix or ".png"
+    stem = Path(cleaned).stem[:50]
+    return f"{prefix}_{stem}{suffix}"
+
+
 def _save_uploads(job_dir: Path, ref_image: UploadFile, mov_image: UploadFile) -> tuple[Path, Path]:
     """Persist uploaded files to the job directory and return their paths."""
     job_dir.mkdir(parents=True, exist_ok=True)
 
-    ref_save = job_dir / f"input_ref_{ref_image.filename}"
-    mov_save = job_dir / f"input_mov_{mov_image.filename}"
+    ref_filename = _clean_filename(ref_image.filename, "input_ref")
+    mov_filename = _clean_filename(mov_image.filename, "input_mov")
+
+    ref_save = job_dir / ref_filename
+    mov_save = job_dir / mov_filename
+
+    ref_save.parent.mkdir(parents=True, exist_ok=True)
+    mov_save.parent.mkdir(parents=True, exist_ok=True)
 
     with open(ref_save, "wb") as f:
         shutil.copyfileobj(ref_image.file, f)
@@ -40,6 +59,7 @@ def _save_uploads(job_dir: Path, ref_image: UploadFile, mov_image: UploadFile) -
         shutil.copyfileobj(mov_image.file, f)
 
     return ref_save, mov_save
+
 
 
 # ---------------------------------------------------------------------------

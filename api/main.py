@@ -6,13 +6,10 @@ Run: uvicorn api.main:app --reload --port 8000
 import sys
 from pathlib import Path
 
-# Ensure 'src' and project root are in Python's search path
-ROOT_DIR = Path(__file__).resolve().parent.parent
-SRC_DIR = ROOT_DIR / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
+# Ensure src/ is in sys.path so 'selene' is always importable
+_src = Path(__file__).resolve().parent.parent / "src"
+if _src.exists() and str(_src) not in sys.path:
+    sys.path.insert(0, str(_src))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -153,5 +150,11 @@ def health():
         "documentation": "/docs",
         "health": "/api/v1/health"
     }
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    from fastapi import Response
+    return Response(status_code=204)
 
 

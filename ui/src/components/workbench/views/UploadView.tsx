@@ -43,8 +43,8 @@ export const UploadView: React.FC = () => {
     referenceImage, sourceImage,
     sourceSensor,
     setReferenceFile, setSourceFile, setSourceSensor,
-    clearUploads, loadSyntheticPair, navigateTo,
-    addLog, addToast,
+    clearUploads, loadSyntheticPair, generateTargetFromReference, navigateTo,
+    addLog, addToast, isProcessing,
     setReferenceImage: _setRef, setSourceImage: _setSrc,
   } = useApp() as any;
 
@@ -77,6 +77,38 @@ export const UploadView: React.FC = () => {
           Load Demo Synthetic Pair
         </button>
       </div>
+
+      {/* OVERLAP / MISMATCH ALERT BANNER */}
+      {Boolean(referenceImage?.file && !referenceImage?.name?.startsWith('reference.png') && (sourceImage?.name?.includes('synthetic_target.png') || !sourceImage?.file)) && (
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between flex-wrap gap-4 shadow-sm">
+          <div className="space-y-1 max-w-2xl">
+            <div className="font-bold flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+              <span className="text-base">⚠️</span> Overlapping Image Pair Required
+            </div>
+            <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+              You loaded custom image <strong className="font-mono">{referenceImage?.name}</strong>, but Target is still the default synthetic sample. Registration requires two images covering the same lunar area. Upload a matching Target file, or auto-generate a matching target directly from this image.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={generateTargetFromReference}
+              disabled={isProcessing}
+              className="px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              {isProcessing ? 'Generating…' : 'Generate Matching Target'}
+            </button>
+            <button
+              type="button"
+              onClick={() => srcInputRef.current?.click()}
+              className="px-3 py-2 rounded-lg bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-semibold text-xs hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
+            >
+              Choose Target File
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* TWO CARDS GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -282,14 +314,27 @@ export const UploadView: React.FC = () => {
 
       {/* ACTION CONTROLS */}
       <div className="p-6 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-between flex-wrap gap-4 shadow-xl">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <button
+            type="button"
             onClick={loadSyntheticPair}
             className="px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-100 hover:bg-slate-700 text-xs font-semibold transition-colors"
           >
-            Generate Synthetic Pair
+            Reset Demo Pair
           </button>
+          {referenceImage && (
+            <button
+              type="button"
+              onClick={generateTargetFromReference}
+              disabled={isProcessing}
+              className="px-4 py-2.5 rounded-xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/30 text-xs font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              {isProcessing ? 'Generating…' : 'Generate Target from Reference'}
+            </button>
+          )}
           <button
+            type="button"
             onClick={clearUploads}
             className="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-slate-200 text-xs font-semibold transition-colors"
           >
@@ -298,6 +343,7 @@ export const UploadView: React.FC = () => {
         </div>
 
         <button
+          type="button"
           onClick={() => navigateTo('register')}
           className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs transition-all shadow-lg shadow-sky-600/25 border border-sky-400/30"
         >

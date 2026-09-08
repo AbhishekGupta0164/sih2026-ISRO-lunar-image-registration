@@ -8,6 +8,7 @@ Wires Stage 0 -> Stage 8 in order.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 import argparse
 import datetime
 import json
@@ -127,7 +128,10 @@ def run_pipeline(
     log.info(f"Matcher [{matcher_name}] found {len(pts_src_w)} candidate correspondences")
 
     if len(pts_src_w) < 4:
-        raise RuntimeError(f"Insufficient match candidates found by matcher ({len(pts_src_w)} points)")
+        raise RuntimeError(
+            f"Insufficient match candidates found by matcher ({len(pts_src_w)} points, minimum 4 required). "
+            "Please ensure both Reference and Source images depict the same overlapping lunar surface area with shared craters."
+        )
 
     # Map match coordinates from working GSD space back to native pixel space
     pts_src_nat = upscale_coordinates(pts_src_w, from_gsd_m=common_gsd_m, to_gsd_m=pair.mov_meta.gsd_m)

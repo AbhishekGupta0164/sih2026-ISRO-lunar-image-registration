@@ -313,6 +313,14 @@ export const RegisterView: React.FC = () => {
           />
         </div>
 
+        {/* Exporting Notice */}
+        {isProcessing && pipelineProgress >= 80 && (
+          <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 px-4 py-2.5 rounded-xl flex items-center gap-2">
+            <span className="animate-spin text-sm">⚙️</span>
+            <span>Exporting full-resolution GeoTIFF, PNG preview, metric plots, and PDF report. Large rasters (up to 10+ Megapixels) take 20–40 seconds to warp and encode to disk.</span>
+          </div>
+        )}
+
         {/* Pipeline Stages Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
@@ -326,8 +334,9 @@ export const RegisterView: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-slate-800 dark:text-slate-200">
               {STAGE_DETAILS.map((stg, idx) => {
-                const isRunning = isProcessing && activeStepIndex === idx;
-                const isDone = activeStepIndex > idx || (pipelineProgress === 100 && activeStepIndex >= idx);
+                const isExportStage = idx === STAGE_DETAILS.length - 1;
+                const isRunning = isProcessing && (activeStepIndex === idx || (isExportStage && pipelineProgress >= 80));
+                const isDone = activeStepIndex > idx || (pipelineProgress === 100 && (activeStepIndex >= idx || isExportStage));
 
                 return (
                   <tr key={stg.id} className={isRunning ? 'bg-sky-500/10' : ''}>

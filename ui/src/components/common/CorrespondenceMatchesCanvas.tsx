@@ -335,7 +335,14 @@ export const CorrespondenceMatchesCanvas: React.FC<Props> = ({
         .then((csvText) => {
           if (!active) return;
           const lines = csvText.trim().split('\n');
-          if (lines.length <= 1) return;
+          if (lines.length <= 1) {
+            corrsRef.current = [];
+            progRef.current = [];
+            setScanProgress(0);
+            setScanComplete(true);
+            setIsScanning(false);
+            return;
+          }
           const header = lines[0].split(',').map((h) => h.trim());
           const sxIdx = header.indexOf('src_x');
           const syIdx = header.indexOf('src_y');
@@ -403,6 +410,15 @@ export const CorrespondenceMatchesCanvas: React.FC<Props> = ({
         .catch((err) => {
           console.warn('Could not parse matches.csv, falling back to geometric estimation:', err);
         });
+    }
+
+    if (rawMatchesCount === 0 && inliersCount === 0) {
+      corrsRef.current = [];
+      progRef.current = [];
+      setScanProgress(0);
+      setScanComplete(true);
+      setIsScanning(false);
+      return;
     }
 
     corrsRef.current = buildCorrespondences(
@@ -530,6 +546,23 @@ export const CorrespondenceMatchesCanvas: React.FC<Props> = ({
     ctx.letterSpacing = '';
 
     // ── Correspondences ──────────────────────────────────────────────────────
+    if (corrs.length === 0) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(6, 13, 24, 0.82)';
+      ctx.fillRect(0, pAy, CW, panelH);
+      ctx.font = 'bold 13px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillStyle = '#f59e0b';
+      const t1 = '⚠️ 0 Valid Geometric Inliers Retained';
+      const tw1 = ctx.measureText(t1).width;
+      ctx.fillText(t1, (CW - tw1) / 2, pAy + panelH / 2 - 12);
+      ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillStyle = '#94a3b8';
+      const t2 = 'The Source and Reference images do not share overlapping lunar terrain or shared craters.';
+      const tw2 = ctx.measureText(t2).width;
+      ctx.fillText(t2, (CW - tw2) / 2, pAy + panelH / 2 + 12);
+      ctx.restore();
+    }
+
     const anyHovered = hovI !== null;
     corrs.forEach((c, idx) => {
       const p = progs[idx] ?? 1;
