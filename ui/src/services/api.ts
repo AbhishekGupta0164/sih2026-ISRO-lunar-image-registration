@@ -121,8 +121,12 @@ export class SeleneApiService {
           }
 
           if (status.done) {
-            if (status.status === 'success') resolve(status);
-            else reject(new Error(status.error || 'Pipeline failed'));
+            if (status.status === 'success') {
+              onStep(STAGE_LABELS.length - 1, status.stage || 'Completed', 100);
+              resolve(status);
+            } else {
+              reject(new Error(status.error || 'Pipeline failed'));
+            }
             return;
           }
 

@@ -548,6 +548,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setResults(res);
       setIsComplete(true);
       setIsProcessing(false);
+      setPipelineProgress(100);
+      setActiveStepIndex(9);
       addLog('Pipeline complete. Registration products and metrics are ready.', 'success');
       addToast(
         `Registration complete in ${res.time} s. Metrics and products are ready.`,

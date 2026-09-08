@@ -177,6 +177,7 @@ export const RegisterView: React.FC = () => {
     setGeometryModel,
     runRegistration,
     isProcessing,
+    isComplete,
     pipelineProgress,
     activeStepIndex,
     logs,
@@ -200,8 +201,8 @@ export const RegisterView: React.FC = () => {
 
         <div className="flex items-center gap-2 font-mono text-xs">
           <span className="text-slate-500 dark:text-slate-400 font-semibold">Status:</span>
-          <span className={`font-semibold px-3 py-1 rounded-lg text-xs ${isProcessing ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30' : pipelineProgress === 100 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' : 'bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800'}`}>
-            {isProcessing ? 'Executing Pipeline...' : pipelineProgress === 100 ? 'Pipeline Complete' : 'Ready'}
+          <span className={`font-semibold px-3 py-1 rounded-lg text-xs ${isProcessing ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30' : isComplete ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' : 'bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800'}`}>
+            {isProcessing ? 'Executing Pipeline...' : isComplete ? 'Pipeline Complete' : 'Ready'}
           </span>
         </div>
       </div>
@@ -301,7 +302,7 @@ export const RegisterView: React.FC = () => {
             Pipeline Progress
           </h2>
           <span className="text-xs font-mono text-sky-600 dark:text-sky-400 font-bold bg-sky-500/10 px-3 py-1 rounded border border-sky-500/20">
-            {pipelineProgress}% Completed
+            {isComplete ? 100 : pipelineProgress}% Completed
           </span>
         </div>
 
@@ -309,7 +310,7 @@ export const RegisterView: React.FC = () => {
         <div className="w-full bg-slate-100 dark:bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-200 dark:border-slate-800">
           <div
             className="h-full bg-gradient-to-r from-sky-500 to-cyan-400 transition-all duration-300 shadow-[0_0_12px_rgba(56,189,248,0.6)]"
-            style={{ width: `${pipelineProgress}%` }}
+            style={{ width: `${isComplete ? 100 : pipelineProgress}%` }}
           />
         </div>
 
@@ -335,8 +336,8 @@ export const RegisterView: React.FC = () => {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-slate-800 dark:text-slate-200">
               {STAGE_DETAILS.map((stg, idx) => {
                 const isExportStage = idx === STAGE_DETAILS.length - 1;
-                const isRunning = isProcessing && (activeStepIndex === idx || (isExportStage && pipelineProgress >= 80));
-                const isDone = activeStepIndex > idx || (pipelineProgress === 100 && (activeStepIndex >= idx || isExportStage));
+                const isRunning = !isComplete && isProcessing && (activeStepIndex === idx || (isExportStage && pipelineProgress >= 80));
+                const isDone = isComplete || activeStepIndex > idx || (pipelineProgress === 100 && (activeStepIndex >= idx || isExportStage));
 
                 return (
                   <tr key={stg.id} className={isRunning ? 'bg-sky-500/10' : ''}>
