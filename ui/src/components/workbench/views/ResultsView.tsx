@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../../context/AppContext';
 import { HeatmapCanvas } from '../../common/HeatmapCanvas';
+import { CheckerboardCanvas } from '../../common/CheckerboardCanvas';
 import { seleneApi } from '../../../services/api';
 
 // ── Seeded PRNG ───────────────────────────────────────────────────────────────
@@ -236,47 +237,19 @@ export const ResultsView: React.FC = () => {
           {/* CHECKERBOARD TAB */}
           {activeTab === 'checker' && (
             <div className="result-pane">
-              {checkerboardPlotUrl ? (
-                <div className="h-80 rounded-xl overflow-hidden relative border border-slate-800 bg-slate-950 flex items-center justify-center p-2">
-                  <img
-                    src={checkerboardPlotUrl}
-                    alt="Registration Checkerboard Plot"
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-              ) : (
-                <div className="h-80 rounded-xl border border-slate-800 grid grid-cols-8 grid-rows-8 overflow-hidden relative bg-slate-950">
-                  {checkerCells.map((isRef, idx) => {
-                    const row = Math.floor(idx / 8);
-                    const col = idx % 8;
-                    return (
-                      <div key={idx} className="relative overflow-hidden border-[0.5px] border-slate-800/60">
-                        <img
-                          src={isRef ? refUrl : (registeredUrl || srcUrl)}
-                          alt=""
-                          className="absolute max-w-none opacity-90"
-                          style={{
-                            width: '800%',
-                            height: '800%',
-                            left: `${-(col * 100)}%`,
-                            top: `${-(row * 100)}%`
-                          }}
-                        />
-                        <span className="absolute bottom-0.5 right-0.5 font-mono text-[9px] bg-slate-950/90 text-slate-200 px-1 rounded border border-slate-700">
-                          {isRef ? 'REF' : registeredUrl ? 'REG' : 'SRC'}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              <CheckerboardCanvas
+                refUrl={refUrl}
+                warpedUrl={wipeRightUrl}
+                refLabel={`Reference: ${referenceImage?.sensor || 'LRO NAC (Fixed)'}`}
+                warpedLabel={registeredUrl ? 'Registered: TPS Warped Output' : `Target: ${sourceImage?.sensor || 'OHRC Moving'}`}
+              />
             </div>
           )}
 
           {/* GCP + QUIVER TAB */}
           {activeTab === 'gcp' && (
             <div className="result-pane">
-              <div className="h-80 rounded-xl overflow-hidden relative border border-slate-800 bg-slate-950 flex items-center justify-center">
+              <div className="h-[480px] rounded-2xl overflow-hidden relative border border-slate-200 dark:border-slate-800 bg-slate-950 flex items-center justify-center shadow-xl">
                 {quiverPlotUrl ? (
                   <img
                     src={quiverPlotUrl}
@@ -302,7 +275,7 @@ export const ResultsView: React.FC = () => {
 
           {/* RESIDUAL HEATMAP TAB */}
           {activeTab === 'residual' && (
-            <div className="result-pane h-80 relative overflow-hidden bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-center">
+            <div className="result-pane h-[480px] relative overflow-hidden bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-center shadow-xl">
               {residualHeatmapUrl ? (
                 <img
                   src={residualHeatmapUrl}
