@@ -1,12 +1,12 @@
 /**
  * SeleneApiService
  *
- * All calls target http://localhost:8000/api/v1 by default.
+ * All calls target https://sih2026-lunar-image-registration-1.onrender.com/api/v1 by default.
  * The base URL can be overridden from the Settings view.
  */
 import { MatcherType, RegistrationResults } from '../types';
 
-export const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000/api/v1';
+export const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'https://sih2026-lunar-image-registration-1.onrender.com/api/v1';
 
 export interface PipelineStepCallback {
   (stepIndex: number, message: string, percent: number): void;
