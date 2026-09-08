@@ -345,7 +345,20 @@ Certified by SELENE-MATCH Automated Pipeline Core.
   };
 
     const handleDownload = async (productPath: string | undefined, filename: string) => {
-    // 1. PDF / TXT: ALWAYS use the beautiful frontend HTML printable report
+    // 1. If real backend file exists, ALWAYS download the real generated file from backend!
+    if (isReal && productPath) {
+      const url = seleneApi.productUrl(productPath);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.target = '_blank';
+      a.click();
+      addLog(`Downloading real deliverable product ${filename} from backend…`, 'success');
+      addToast(`Downloading ${filename} from backend server.`, 'success', 'Download Started');
+      return;
+    }
+
+    // 2. Demo / Fallback PDF / TXT printable report
     if (filename.endsWith('.pdf') || filename.endsWith('.txt')) {
       // 1. OPEN WINDOW IMMEDIATELY to bypass popup blocker!
       const printWin = window.open('', '_blank');

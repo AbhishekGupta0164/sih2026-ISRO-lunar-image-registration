@@ -83,6 +83,7 @@ def run_job_bg(job_id: str, src_path: str, ref_path: str, config_dict: dict | No
             progress=1.0,
             metrics=res["metrics"],
             registered_geotiff_url=_product_url(job_id, "registered.tif"),
+            registered_png_url=_product_url(job_id, "registered.png"),
             matches_csv_url=_product_url(job_id, "matches.csv"),
             report_pdf_url=_product_url(job_id, "registration_report.pdf"),
             checkerboard_url=_product_url(job_id, "plot_checkerboard.png"),

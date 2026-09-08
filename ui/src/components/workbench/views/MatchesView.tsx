@@ -2,18 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { useApp } from '../../../context/AppContext';
 import { CorrespondenceMatchesCanvas } from '../../common/CorrespondenceMatchesCanvas';
 
-// ── Ground-truth values for the synthetic pair ──────────────────────────────
-const GT_ROTATION = 7.0;
-const GT_SCALE = 0.92;
-const GT_TX = 35.0;
-const GT_TY = 20.0;
-const GT_GAMMA = 0.7;
-
-// Estimated recovered values (from pipeline run on synthetic pair)
-const EST_ROTATION = 6.83;
-const EST_SCALE = 0.921;
-const EST_TX = 33.6;
-const EST_TY = 21.3;
+import { seleneApi } from '../../../services/api';
 
 // ── Score histogram canvas ───────────────────────────────────────────────────
 const ScoreHistogram: React.FC<{ inlierRatio: number }> = ({ inlierRatio }) => {
@@ -159,15 +148,44 @@ const ParamRow: React.FC<{
 
 // ── Main view ────────────────────────────────────────────────────────────────
 export const MatchesView: React.FC = () => {
-  const { results, referenceImage, sourceImage } = useApp();
+  const { results, referenceImage, sourceImage, isComplete } = useApp();
 
   const refUrl  = referenceImage?.previewUrl || '/synthetic/reference.png';
   const srcUrl  = sourceImage?.previewUrl    || '/synthetic/synthetic_target.png';
-  const raw     = results.raw     || 21389;
-  const inliers = results.inliers || 18742;
-  const ratio   = results.ratio   || 87.6;
-  const outliers = raw - inliers;
-  const matcherName = results.matcherUsed || 'lightglue';
+  const raw     = isComplete ? (results.raw || 0) : 0;
+  const inliers = isComplete ? (results.inliers || 0) : 0;
+  const ratio   = isComplete ? (results.ratio || 0) : 0;
+  const outliers = Math.max(0, raw - inliers);
+  const matcherName = isComplete ? (results.matcherUsed || 'auto') : 'Awaiting Execution';
+
+  const rec = results.recoveredTransform;
+  const gt = results.groundTruthTransform;
+  const hasGt = Boolean(gt && gt.rotation_deg !== undefined);
+  const hasRec = Boolean(rec && rec.rotation_deg !== undefined);
+
+  const rotGtStr = gt?.rotation_deg !== undefined ? `${gt.rotation_deg}°` : 'Empirical (N/A)';
+  const rotRecStr = rec?.rotation_deg !== undefined ? `${rec.rotation_deg}°` : '—';
+  const rotErrStr = gt?.rotation_deg !== undefined && rec?.rotation_deg !== undefined
+    ? `Δ ${Math.abs(rec.rotation_deg - gt.rotation_deg).toFixed(2)}°`
+    : hasRec ? 'Estimated from GCPs' : '—';
+
+  const scaleGtStr = gt?.scale !== undefined ? `${gt.scale}×` : 'Empirical (N/A)';
+  const scaleRecStr = rec?.scale !== undefined ? `${rec.scale}×` : '—';
+  const scaleErrStr = gt?.scale !== undefined && rec?.scale !== undefined
+    ? `Δ ${Math.abs(rec.scale - gt.scale).toFixed(3)}×`
+    : hasRec ? 'Estimated from GCPs' : '—';
+
+  const txGtStr = gt?.tx_px !== undefined ? `${gt.tx_px} px` : 'Empirical (N/A)';
+  const txRecStr = rec?.tx_px !== undefined ? `${rec.tx_px} px` : '—';
+  const txErrStr = gt?.tx_px !== undefined && rec?.tx_px !== undefined
+    ? `Δ ${Math.abs(rec.tx_px - gt.tx_px).toFixed(1)} px`
+    : hasRec ? 'Estimated from GCPs' : '—';
+
+  const tyGtStr = gt?.ty_px !== undefined ? `${gt.ty_px} px` : 'Empirical (N/A)';
+  const tyRecStr = rec?.ty_px !== undefined ? `${rec.ty_px} px` : '—';
+  const tyErrStr = gt?.ty_px !== undefined && rec?.ty_px !== undefined
+    ? `Δ ${Math.abs(rec.ty_px - gt.ty_px).toFixed(1)} px`
+    : hasRec ? 'Estimated from GCPs' : '—';
 
   return (
     <section id="view-matches" className="view-section active space-y-6">
@@ -185,14 +203,16 @@ export const MatchesView: React.FC = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-xl transition-colors">
           <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Raw Matches</div>
-          <div id="match-raw" className="text-2xl font-extrabold text-slate-900 dark:text-white font-mono mt-1">{raw.toLocaleString()}</div>
+          <div id="match-raw" className="text-2xl font-extrabold text-slate-900 dark:text-white font-mono mt-1">
+            {isComplete ? raw.toLocaleString() : '—'}
+          </div>
           <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">Before filtering</div>
         </div>
 
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-xl transition-colors">
           <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Robust Inliers</div>
           <div id="match-inliers" className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 font-mono mt-1">
-            {inliers.toLocaleString()}
+            {isComplete ? inliers.toLocaleString() : '—'}
           </div>
           <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">After MAGSAC++</div>
         </div>
@@ -200,7 +220,7 @@ export const MatchesView: React.FC = () => {
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-xl transition-colors">
           <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Inlier Ratio</div>
           <div className="text-2xl font-extrabold text-sky-600 dark:text-sky-400 font-mono mt-1">
-            {ratio.toFixed(1)}%
+            {isComplete ? `${ratio.toFixed(1)}%` : '—'}
           </div>
           <div className="w-full bg-slate-100 dark:bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-200 dark:border-slate-800 mt-2">
             <div className="h-full bg-sky-500 shadow-[0_0_8px_rgba(56,189,248,0.6)]" style={{ width: `${ratio}%` }} />
@@ -224,10 +244,10 @@ export const MatchesView: React.FC = () => {
           </h2>
           <div className="flex gap-2 font-mono text-xs">
             <span className="px-3 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-semibold">
-              Inliers: {inliers.toLocaleString()}
+              Inliers: {isComplete ? inliers.toLocaleString() : '0'}
             </span>
             <span className="px-3 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-semibold">
-              Outliers: {outliers.toLocaleString()}
+              Outliers: {isComplete ? outliers.toLocaleString() : '0'}
             </span>
           </div>
         </div>
@@ -238,10 +258,11 @@ export const MatchesView: React.FC = () => {
           inliersCount={inliers}
           rawMatchesCount={raw}
           matcherName={matcherName}
-          rotationDeg={GT_ROTATION}
-          scaleFactor={GT_SCALE}
-          txPx={GT_TX}
-          tyPx={GT_TY}
+          rotationDeg={rec?.rotation_deg ?? (gt?.rotation_deg ?? 0)}
+          scaleFactor={rec?.scale ?? (gt?.scale ?? 1.0)}
+          txPx={rec?.tx_px ?? (gt?.tx_px ?? 0)}
+          tyPx={rec?.ty_px ?? (gt?.ty_px ?? 0)}
+          matchesCsvUrl={results.matchesCsvUrl ? seleneApi.productUrl(results.matchesCsvUrl) : undefined}
         />
       </div>
 
@@ -249,9 +270,11 @@ export const MatchesView: React.FC = () => {
       <div className="p-6 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-4 shadow-xl transition-colors">
         <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-800 pb-3">
           <h2 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
-            Ground-Truth Parameter Recovery Benchmark
+            Geometric Transformation Recovery Benchmark
           </h2>
-          <span className="text-xs font-mono text-sky-600 dark:text-sky-400 bg-sky-500/10 px-2.5 py-1 rounded border border-sky-500/20">Synthetic Verification Test</span>
+          <span className="text-xs font-mono text-sky-600 dark:text-sky-400 bg-sky-500/10 px-2.5 py-1 rounded border border-sky-500/20">
+            {hasGt ? 'Synthetic Ground Truth Verification' : hasRec ? 'Empirical Homography Estimation' : 'Awaiting Run'}
+          </span>
         </div>
         <table className="w-full text-left border-collapse text-xs">
           <thead>
@@ -265,27 +288,35 @@ export const MatchesView: React.FC = () => {
           <tbody className="font-mono text-slate-800 dark:text-slate-200 divide-y divide-slate-100 dark:divide-slate-800/80">
             <tr>
               <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">Rotation</td>
-              <td className="py-3 px-4">{GT_ROTATION}°</td>
-              <td className="py-3 px-4 text-emerald-600 dark:text-emerald-400">{EST_ROTATION}°</td>
-              <td className="py-3 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">Δ 0.17°</td>
+              <td className="py-3 px-4">{rotGtStr}</td>
+              <td className="py-3 px-4 text-emerald-600 dark:text-emerald-400">{rotRecStr}</td>
+              <td className="py-3 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">
+                {rotErrStr}
+              </td>
             </tr>
             <tr>
               <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">Scale Factor</td>
-              <td className="py-3 px-4">{GT_SCALE}×</td>
-              <td className="py-3 px-4 text-emerald-600 dark:text-emerald-400">{EST_SCALE}×</td>
-              <td className="py-3 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">Δ 0.001×</td>
+              <td className="py-3 px-4">{scaleGtStr}</td>
+              <td className="py-3 px-4 text-emerald-600 dark:text-emerald-400">{scaleRecStr}</td>
+              <td className="py-3 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">
+                {scaleErrStr}
+              </td>
             </tr>
             <tr>
               <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">Translation X</td>
-              <td className="py-3 px-4">{GT_TX} px</td>
-              <td className="py-3 px-4 text-emerald-600 dark:text-emerald-400">{EST_TX} px</td>
-              <td className="py-3 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">Δ 1.4 px</td>
+              <td className="py-3 px-4">{txGtStr}</td>
+              <td className="py-3 px-4 text-emerald-600 dark:text-emerald-400">{txRecStr}</td>
+              <td className="py-3 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">
+                {txErrStr}
+              </td>
             </tr>
             <tr>
               <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">Translation Y</td>
-              <td className="py-3 px-4">{GT_TY} px</td>
-              <td className="py-3 px-4 text-emerald-600 dark:text-emerald-400">{EST_TY} px</td>
-              <td className="py-3 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">Δ 1.3 px</td>
+              <td className="py-3 px-4">{tyGtStr}</td>
+              <td className="py-3 px-4 text-emerald-600 dark:text-emerald-400">{tyRecStr}</td>
+              <td className="py-3 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">
+                {tyErrStr}
+              </td>
             </tr>
           </tbody>
         </table>

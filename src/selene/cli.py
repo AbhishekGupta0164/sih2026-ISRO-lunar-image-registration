@@ -287,6 +287,30 @@ def run_pipeline(
     metrics_dict["mean_confidence"] = float(np.mean(confidence)) if len(confidence) > 0 else 0.0
     metrics_dict["pct_gcp_confidence_ge_0.6"] = float(np.mean(confidence >= 0.6)) if len(confidence) > 0 else 0.0
 
+    if H_fit is not None and getattr(H_fit, "shape", None) == (3, 3):
+        a, b, tx = float(H_fit[0, 0]), float(H_fit[0, 1]), float(H_fit[0, 2])
+        c, d, ty = float(H_fit[1, 0]), float(H_fit[1, 1]), float(H_fit[1, 2])
+        scale_x = float(np.sqrt(a**2 + c**2))
+        scale_y = float(np.sqrt(b**2 + d**2))
+        rot_deg = float(np.degrees(np.arctan2(c, a)))
+        metrics_dict["recovered_transform"] = {
+            "rotation_deg": round(rot_deg, 2),
+            "scale": round((scale_x + scale_y) / 2.0, 3),
+            "tx_px": round(tx, 1),
+            "ty_px": round(ty, 1),
+        }
+
+    if H_gt is not None:
+        try:
+            metrics_dict["ground_truth_transform"] = {
+                "rotation_deg": float(gt_data.get("rotation_deg", 0.0)),
+                "scale": float(gt_data.get("scale", 1.0)),
+                "tx_px": float(gt_data.get("tx", 0.0)),
+                "ty_px": float(gt_data.get("ty", 0.0)),
+            }
+        except Exception:
+            pass
+
     metrics_json = out_path / "metrics.json"
     with open(metrics_json, "w") as f:
         json.dump(metrics_dict, f, indent=2)
@@ -318,7 +342,7 @@ def run_pipeline(
         "status": "success",
         "registered_geotiff": str(registered_tif),
         "matches_csv": str(matches_csv),
-        "metrics": metrics.to_dict(),
+        "metrics": metrics_dict,
         "pdf_report": str(pdf_report),
         "residual_heatmap": str(p_residual),
     }

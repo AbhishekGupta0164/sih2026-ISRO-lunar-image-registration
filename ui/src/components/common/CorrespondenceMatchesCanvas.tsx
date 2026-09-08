@@ -24,6 +24,7 @@ interface Props {
   scaleFactor?: number;
   txPx?: number;
   tyPx?: number;
+  matchesCsvUrl?: string;
 }
 
 // ── Fast deterministic PRNG ──────────────────────────────────────────────────
@@ -281,6 +282,7 @@ export const CorrespondenceMatchesCanvas: React.FC<Props> = ({
   scaleFactor  = 0.92,
   txPx         = 35.0,
   tyPx         = 20.0,
+  matchesCsvUrl,
 }) => {
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const imgsRef     = useRef<{ a: HTMLImageElement; b: HTMLImageElement } | null>(null);
@@ -320,8 +322,89 @@ export const CorrespondenceMatchesCanvas: React.FC<Props> = ({
     ? inliersCount / rawMatchesCount
     : 0.88;
 
-  // Build correspondences on parameter/method changes
+  // Build correspondences on parameter/method changes or load from real matches.csv
   useEffect(() => {
+    let active = true;
+
+    if (matchesCsvUrl) {
+      fetch(matchesCsvUrl)
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.text();
+        })
+        .then((csvText) => {
+          if (!active) return;
+          const lines = csvText.trim().split('\n');
+          if (lines.length <= 1) return;
+          const header = lines[0].split(',').map((h) => h.trim());
+          const sxIdx = header.indexOf('src_x');
+          const syIdx = header.indexOf('src_y');
+          const rxIdx = header.indexOf('ref_x');
+          const ryIdx = header.indexOf('ref_y');
+          const confIdx = header.indexOf('confidence');
+
+          if (sxIdx === -1 || rxIdx === -1) return;
+
+          const dataLines = lines.slice(1);
+          const maxDisplay = 60;
+          const step = Math.max(1, Math.floor(dataLines.length / maxDisplay));
+
+          const imgA = imgsRef.current?.a;
+          const imgB = imgsRef.current?.b;
+          const wA = imgA?.naturalWidth || 1024;
+          const hA = imgA?.naturalHeight || 1024;
+          const wB = imgB?.naturalWidth || 1024;
+          const hB = imgB?.naturalHeight || 1024;
+
+          const parsedCorrs: Correspondence[] = [];
+          for (let i = 0; i < dataLines.length && parsedCorrs.length < maxDisplay; i += step) {
+            const parts = dataLines[i].split(',').map(Number);
+            if (parts.length < 4 || isNaN(parts[sxIdx]) || isNaN(parts[rxIdx])) continue;
+            const sx = parts[sxIdx];
+            const sy = parts[syIdx];
+            const rx = parts[rxIdx];
+            const ry = parts[ryIdx];
+            const conf = confIdx !== -1 && !isNaN(parts[confIdx]) ? parts[confIdx] : 0.85;
+
+            const ax = Math.max(0.04, Math.min(0.96, sx / wA));
+            const ay = Math.max(0.04, Math.min(0.96, sy / hA));
+            const bx = Math.max(0.04, Math.min(0.96, rx / wB));
+            const by = Math.max(0.04, Math.min(0.96, ry / hB));
+
+            const t = Math.max(0, Math.min(1, (conf - 0.5) / 0.45));
+            const hue = 65 + t * 130;
+
+            parsedCorrs.push({
+              ax,
+              ay,
+              bx,
+              by,
+              score: conf,
+              isInlier: true,
+              hue,
+              drawOrder: Math.random(),
+              subDx: (Math.random() - 0.5) * 0.2,
+              subDy: (Math.random() - 0.5) * 0.2,
+              iters: 12 + Math.floor(Math.random() * 8),
+            });
+          }
+
+          if (parsedCorrs.length > 0 && active) {
+            corrsRef.current = parsedCorrs;
+            progRef.current = parsedCorrs.map(() => 1.0);
+            scanBeamPosRef.current = 0;
+            dirRef.current = 1;
+            setScanProgress(0);
+            setScanComplete(false);
+            setIsScanning(true);
+            return;
+          }
+        })
+        .catch((err) => {
+          console.warn('Could not parse matches.csv, falling back to geometric estimation:', err);
+        });
+    }
+
     corrsRef.current = buildCorrespondences(
       inlierFraction, rotationDeg, scaleFactor, txN, tyN, DISPLAY_N, subpixelMethod,
     );
@@ -331,7 +414,11 @@ export const CorrespondenceMatchesCanvas: React.FC<Props> = ({
     setScanProgress(0);
     setScanComplete(false);
     setIsScanning(true);
-  }, [inlierFraction, rotationDeg, scaleFactor, txN, tyN, subpixelMethod]);
+
+    return () => {
+      active = false;
+    };
+  }, [matchesCsvUrl, loaded, inlierFraction, rotationDeg, scaleFactor, txN, tyN, subpixelMethod]);
 
   // ── Render frame ──────────────────────────────────────────────────────────
   const render = useCallback(() => {

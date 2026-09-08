@@ -22,6 +22,7 @@ export interface JobStatus {
   metrics?: Record<string, number | string | boolean | null>;
   error?: string;
   registered_geotiff_url?: string;
+  registered_png_url?: string;
   matches_csv_url?: string;
   report_pdf_url?: string;
   checkerboard_url?: string;
@@ -208,44 +209,21 @@ export class SeleneApiService {
         method:   `${this.getMatcherLabel(resolvedMatcher)} + IC-LK ECC Sub-Pixel`,
         matcherUsed: resolvedMatcher,
         jobId,
+        registeredGeotiffUrl: status.registered_geotiff_url,
+        registeredPngUrl: status.registered_png_url,
+        matchesCsvUrl: status.matches_csv_url,
+        reportPdfUrl: status.report_pdf_url,
+        checkerboardUrl: status.checkerboard_url,
+        quiverUrl: status.quiver_url,
+        coverageUrl: status.coverage_url,
         residualHeatmapUrl: status.residual_heatmap_url,
+        recoveredTransform: m.recovered_transform as any,
+        groundTruthTransform: m.ground_truth_transform as any,
       };
       return { results, jobId };
     }
 
-    // ── Demo / simulation fallback (no files uploaded) ────────────────────
-    const resolvedMatcher = this.resolveMatcher(matcher, sensor);
-    const jobId = `demo_${Date.now()}`;
-    const steps = [
-      { msg: 'Reading PDS3/PDS4/JSON labels and raster metadata…',            delay: 650 },
-      { msg: 'Building common-GSD pyramid and resampling both images…',        delay: 700 },
-      { msg: 'Preparing illumination-invariant representation and shadow masks…', delay: 800 },
-      { msg: `Gate selected ${this.getMatcherLabel(resolvedMatcher)} from sensor / Sun-angle metadata.`, delay: 650 },
-      { msg: 'Generating candidate correspondences…',                          delay: 900 },
-      { msg: 'Running USAC_MAGSAC++ robust geometry fit and removing outliers…', delay: 850 },
-      { msg: 'Upscaling coordinates and refining GCPs with IC-LK ECC sub-pixel…', delay: 800 },
-      { msg: 'Evaluating independent 80/20 train/validation GCP holdout RMSE…', delay: 650 },
-      { msg: 'Sampling uniform GCPs across the 8×8 overlap grid…',            delay: 650 },
-      { msg: 'Warping source and generating registered.tif, matches.csv and report…', delay: 700 },
-    ];
-
-    const startTime = performance.now();
-    for (let i = 0; i < steps.length; i++) {
-      if (signal?.aborted) throw new Error('Cancelled');
-      onStep(i, steps[i].msg, Math.round(((i + 1) / steps.length) * 100));
-      await new Promise((resolve) => setTimeout(resolve, steps[i].delay));
-    }
-
-    const duration = ((performance.now() - startTime) / 1000).toFixed(2);
-    const results: RegistrationResults = {
-      rmse: 0.68, rmseVal: 0.72, qualityGatePass: true,
-      raw: 21389, inliers: 18742, ratio: 87.6,
-      ce90: 0.91, nni: 0.84, coverage: 81, time: duration,
-      method: `${this.getMatcherLabel(resolvedMatcher)} + IC-LK ECC Sub-Pixel`,
-      matcherUsed: resolvedMatcher,
-      jobId,
-    };
-    return { results, jobId };
+    throw new Error('Both Reference and Source image files must be provided to run the real registration pipeline.');
   }
 
   // ── Data Generation ───────────────────────────────────────────────────────

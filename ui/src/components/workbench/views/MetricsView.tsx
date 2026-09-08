@@ -33,6 +33,35 @@ export const MetricsView: React.FC = () => {
     { key: 'sift',         label: 'SIFT Baseline' },
   ];
 
+  const renderBadge = (pass: boolean, warn?: boolean) => {
+    if (!isComplete) {
+      return (
+        <span className="px-2.5 py-1 rounded text-[11px] font-semibold bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800">
+          PENDING
+        </span>
+      );
+    }
+    if (pass) {
+      return (
+        <span className="px-2.5 py-1 rounded text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+          PASS
+        </span>
+      );
+    }
+    if (warn) {
+      return (
+        <span className="px-2.5 py-1 rounded text-[11px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+          WARN
+        </span>
+      );
+    }
+    return (
+      <span className="px-2.5 py-1 rounded text-[11px] font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+        FAIL
+      </span>
+    );
+  };
+
   return (
     <section id="view-metrics" className="view-section active space-y-6">
       {/* PAGE HEADER */}
@@ -67,9 +96,7 @@ export const MetricsView: React.FC = () => {
                 <td className="py-3 px-4 text-slate-500 dark:text-slate-400">&lt; 1.0 px</td>
                 <td className="py-3 px-4 font-bold text-emerald-600 dark:text-emerald-400">{isComplete ? `${results.rmse} px` : '—'}</td>
                 <td className="py-3 px-4 text-right">
-                  <span className="px-2.5 py-1 rounded text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                    PASS
-                  </span>
+                  {renderBadge(results.rmse < 1.0, results.rmse < 2.0)}
                 </td>
               </tr>
               <tr>
@@ -77,9 +104,7 @@ export const MetricsView: React.FC = () => {
                 <td className="py-3 px-4 text-slate-500 dark:text-slate-400">&lt; 1.0 px</td>
                 <td className="py-3 px-4 font-bold text-sky-600 dark:text-sky-400">{isComplete ? `${results.rmseVal ?? results.rmse} px` : '—'}</td>
                 <td className="py-3 px-4 text-right">
-                  <span className="px-2.5 py-1 rounded text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                    PASS
-                  </span>
+                  {renderBadge((results.rmseVal ?? results.rmse) < 1.0, (results.rmseVal ?? results.rmse) < 2.0)}
                 </td>
               </tr>
               <tr>
@@ -87,9 +112,7 @@ export const MetricsView: React.FC = () => {
                 <td className="py-3 px-4 text-slate-500 dark:text-slate-400">&gt; 60.0%</td>
                 <td className="py-3 px-4 font-bold text-sky-600 dark:text-sky-400">{isComplete ? `${results.ratio}%` : '—'}</td>
                 <td className="py-3 px-4 text-right">
-                  <span className="px-2.5 py-1 rounded text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                    PASS
-                  </span>
+                  {renderBadge(results.ratio >= 60.0, results.ratio >= 40.0)}
                 </td>
               </tr>
               <tr>
@@ -97,9 +120,7 @@ export const MetricsView: React.FC = () => {
                 <td className="py-3 px-4 text-slate-500 dark:text-slate-400">&lt; 1.5 px</td>
                 <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">{isComplete ? `${results.ce90} px` : '—'}</td>
                 <td className="py-3 px-4 text-right">
-                  <span className="px-2.5 py-1 rounded text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                    PASS
-                  </span>
+                  {renderBadge(results.ce90 < 1.5, results.ce90 < 2.5)}
                 </td>
               </tr>
               <tr>
@@ -107,9 +128,7 @@ export const MetricsView: React.FC = () => {
                 <td className="py-3 px-4 text-slate-500 dark:text-slate-400">&gt; 70.0%</td>
                 <td className="py-3 px-4 font-bold text-sky-600 dark:text-sky-400">{isComplete ? `${results.coverage}%` : '—'}</td>
                 <td className="py-3 px-4 text-right">
-                  <span className="px-2.5 py-1 rounded text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                    PASS
-                  </span>
+                  {renderBadge(results.coverage >= 70.0, results.coverage >= 50.0)}
                 </td>
               </tr>
             </tbody>

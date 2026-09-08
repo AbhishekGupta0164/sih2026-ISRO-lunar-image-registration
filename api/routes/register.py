@@ -70,7 +70,12 @@ async def register_sync(
     cfg_kwargs: dict = {}
     if config_json:
         import json
-        cfg_kwargs = json.loads(config_json)
+        try:
+            parsed = json.loads(config_json)
+            if isinstance(parsed, dict):
+                cfg_kwargs = parsed
+        except Exception:
+            cfg_kwargs = {}
     cfg = PipelineConfig(**cfg_kwargs)
 
     res = run_pipeline(
@@ -85,6 +90,7 @@ async def register_sync(
         "status": "success",
         "metrics": res["metrics"],
         "registered_geotiff_url": f"/products/{job_id}/registered.tif",
+        "registered_png_url":     f"/products/{job_id}/registered.png",
         "matches_csv_url":        f"/products/{job_id}/matches.csv",
         "report_pdf_url":         f"/products/{job_id}/registration_report.pdf",
         "checkerboard_url":       f"/products/{job_id}/plot_checkerboard.png",
@@ -122,7 +128,12 @@ async def register_async(
     cfg_kwargs: dict = {}
     if config_json:
         import json
-        cfg_kwargs = json.loads(config_json)
+        try:
+            parsed = json.loads(config_json)
+            if isinstance(parsed, dict):
+                cfg_kwargs = parsed
+        except Exception:
+            cfg_kwargs = {}
 
     # Register in the shared job store before launching background task
     JOBS_DB[job_id] = init_job(job_id)

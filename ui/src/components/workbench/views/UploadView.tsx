@@ -155,15 +155,23 @@ export const UploadView: React.FC = () => {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-slate-800 dark:text-slate-200">
                 <tr>
                   <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">Dimensions:</td>
-                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">1024 × 1024 px</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">
+                    {referenceImage?.dimensions || (referenceImage ? '1024 × 1024 px' : '—')}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">File Size:</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">
+                    {referenceImage ? `${(referenceImage.size / 1024).toFixed(1)} KB` : '—'}
+                  </td>
                 </tr>
                 <tr>
                   <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">GSD:</td>
-                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">0.50 m/px</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">{referenceImage?.gsd || '0.50 m/px'}</td>
                 </tr>
                 <tr>
                   <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">Sun Elevation:</td>
-                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">34.5°</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">{referenceImage?.sunAngle || '34.5°'}</td>
                 </tr>
               </tbody>
             </table>
@@ -225,10 +233,10 @@ export const UploadView: React.FC = () => {
 
           {/* Preview Box */}
           <div>
-            <label className="text-xs font-semibold text-slate-300 block mb-1">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
               Image Preview
             </label>
-            <div className="h-44 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-center p-2 overflow-hidden">
+            <div className="h-44 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-center p-2 overflow-hidden">
               {sourceImage?.previewUrl ? (
                 <img
                   src={sourceImage.previewUrl}
@@ -243,20 +251,28 @@ export const UploadView: React.FC = () => {
 
           {/* Info Table */}
           <div className="pt-2">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Image Information</h3>
+            <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Image Information</h3>
             <table className="w-full text-xs border-collapse">
-              <tbody className="divide-y divide-slate-800/80 text-slate-200">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-slate-800 dark:text-slate-200">
                 <tr>
-                  <td className="py-1.5 text-slate-400 font-semibold">Dimensions:</td>
-                  <td className="py-1.5 font-mono text-right text-slate-100">1024 × 1024 px</td>
+                  <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">Dimensions:</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">
+                    {sourceImage?.dimensions || (sourceImage ? '1024 × 1024 px' : '—')}
+                  </td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 text-slate-400 font-semibold">GSD:</td>
-                  <td className="py-1.5 font-mono text-right text-slate-100">{sourceImage?.gsd || '0.25 m/px'}</td>
+                  <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">File Size:</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">
+                    {sourceImage ? `${(sourceImage.size / 1024).toFixed(1)} KB` : '—'}
+                  </td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 text-slate-400 font-semibold">Sun Elevation:</td>
-                  <td className="py-1.5 font-mono text-right text-slate-100">32.1°</td>
+                  <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">GSD:</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">{sourceImage?.gsd || '0.25 m/px'}</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">Sun Elevation:</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">{sourceImage?.sunAngle || '32.1°'}</td>
                 </tr>
               </tbody>
             </table>

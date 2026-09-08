@@ -60,17 +60,17 @@ export interface AppContextType {
   updateSettings: (newSettings: Partial<SettingsConfig>) => void;
 }
 
-const defaultResults: RegistrationResults = {
-  rmse: 0.68,
-  raw: 21389,
-  inliers: 18742,
-  ratio: 87.6,
-  ce90: 0.91,
-  nni: 0.84,
-  coverage: 81,
-  time: '18.42',
-  method: 'LightGlue + Phase Congruency',
-  matcherUsed: 'lightglue',
+const emptyResults: RegistrationResults = {
+  rmse: 0,
+  raw: 0,
+  inliers: 0,
+  ratio: 0,
+  ce90: 0,
+  nni: 0,
+  coverage: 0,
+  time: '—',
+  method: '—',
+  matcherUsed: 'none',
 };
 
 const defaultSettings: SettingsConfig = {
@@ -166,7 +166,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   ]);
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const [results, setResults] = useState<RegistrationResults>(defaultResults);
+  const [results, setResults] = useState<RegistrationResults>(emptyResults);
   const [settings, setSettings] = useState<SettingsConfig>(defaultSettings);
   const [routedMatcher, setRoutedMatcher] = useState<string>('NOT EVALUATED');
 
@@ -246,6 +246,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const setReferenceFile = (file: File) => {
+    setIsComplete(false);
+    setPipelineProgress(0);
+    setActiveStepIndex(-1);
+    setResults(emptyResults);
+    const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : '';
     const metadata: ImageMetadata = {
       name: file.name,
       size: file.size,
@@ -253,20 +258,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       sensor: 'LRO NAC',
       gsd: '0.50 m/px',
       sunAngle: '142.1° / 34.5°',
-      previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
+      previewUrl,
       file,
     };
+    if (previewUrl) {
+      const img = new Image();
+      img.onload = () => {
+        setReferenceImage((prev) => prev ? { ...prev, dimensions: `${img.naturalWidth} × ${img.naturalHeight} px` } : prev);
+      };
+      img.src = previewUrl;
+    }
     setReferenceImage(metadata);
     addLog(`Loaded Reference: ${file.name}`, 'success');
     addToast(`Reference image loaded: ${file.name}`, 'success', 'Image Loaded');
   };
 
   const setSourceFile = (file: File) => {
+    setIsComplete(false);
+    setPipelineProgress(0);
+    setActiveStepIndex(-1);
+    setResults(emptyResults);
     const gsdMap: Record<string, string> = {
       'Chandrayaan-2 OHRC': '0.25 m/px',
       'Chandrayaan-2 TMC-2': '5.00 m/px',
       'Chandrayaan-2 IIRS': '80.00 m/px',
     };
+    const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : '';
     const metadata: ImageMetadata = {
       name: file.name,
       size: file.size,
@@ -274,9 +291,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       sensor: sourceSensor,
       gsd: gsdMap[sourceSensor] || '0.25 m/px',
       sunAngle: '284.3° / 32.1°',
-      previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
+      previewUrl,
       file,
     };
+    if (previewUrl) {
+      const img = new Image();
+      img.onload = () => {
+        setSourceImage((prev) => prev ? { ...prev, dimensions: `${img.naturalWidth} × ${img.naturalHeight} px` } : prev);
+      };
+      img.src = previewUrl;
+    }
     setSourceImage(metadata);
     addLog(`Loaded Source: ${file.name}`, 'success');
     addToast(`Source image loaded: ${file.name}`, 'success', 'Image Loaded');
@@ -305,39 +329,91 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setIsComplete(false);
     setPipelineProgress(0);
     setActiveStepIndex(-1);
+    setResults(emptyResults);
     setRoutedMatcher('NOT EVALUATED');
     addLog('Image pair cleared.', 'info');
     addToast('Image pair cleared. Upload new files to continue.', 'info', 'Pair Reset');
   };
 
+  const createFileFromUrl = async (url: string, filename: string): Promise<File> => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+    const blob = await res.blob();
+    return new File([blob], filename, { type: blob.type || 'image/png' });
+  };
+
+  // Pre-load File buffers for default images on mount
+  useEffect(() => {
+    let active = true;
+    const preloadDefaults = async () => {
+      try {
+        const refUrl = seleneApi.productUrl('/synthetic/reference.png');
+        const srcUrl = seleneApi.productUrl('/synthetic/synthetic_target.png');
+        const [refF, srcF] = await Promise.all([
+          createFileFromUrl(refUrl, 'reference.png'),
+          createFileFromUrl(srcUrl, 'synthetic_target.png'),
+        ]);
+        if (!active) return;
+        setReferenceImage((prev) => (prev ? { ...prev, file: refF } : null));
+        setSourceImage((prev) => (prev ? { ...prev, file: srcF } : null));
+      } catch (err) {
+        console.warn('Initial default files prefetch note:', err);
+      }
+    };
+    preloadDefaults();
+    return () => { active = false; };
+  }, []);
+
   const loadSyntheticPair = async () => {
     try {
+      setIsComplete(false);
+      setPipelineProgress(0);
+      setActiveStepIndex(-1);
+      setResults(emptyResults);
       addLog('Fetching synthetic generated image pair from backend…', 'info');
       const data = await seleneApi.getSyntheticPair();
 
+      const refUrl = seleneApi.productUrl(data.reference_image_url || '/synthetic/reference.png');
+      const srcUrl = seleneApi.productUrl(data.source_image_url || '/synthetic/synthetic_target.png');
+
+      let refFile: File | undefined;
+      let srcFile: File | undefined;
+      try {
+        [refFile, srcFile] = await Promise.all([
+          createFileFromUrl(refUrl, data.reference_name || 'reference.png'),
+          createFileFromUrl(srcUrl, data.source_name || 'synthetic_target.png'),
+        ]);
+      } catch (blobErr) {
+        console.warn('Could not construct File blob for synthetic pair:', blobErr);
+      }
+
       const refMeta: ImageMetadata = {
         name: data.reference_name || 'reference.png',
-        size: 502748,
+        size: refFile ? refFile.size : 502748,
         type: 'image/png',
         sensor: 'LRO NAC (Synthetic Ground Truth Grid)',
         gsd: '0.50 m/px',
         sunAngle: '142.1° / 34.5°',
-        previewUrl: data.reference_image_url || '/synthetic/reference.png',
+        previewUrl: refUrl,
+        file: refFile,
+        dimensions: '1024 × 1024 px',
       };
 
       const srcMeta: ImageMetadata = {
         name: data.source_name || 'synthetic_target.png',
-        size: 726420,
+        size: srcFile ? srcFile.size : 726420,
         type: 'image/png',
         sensor: 'Chandrayaan-2 OHRC (Synthetic Warped)',
         gsd: '0.50 m/px',
         sunAngle: '284.3° / 32.1°',
-        previewUrl: data.source_image_url || '/synthetic/synthetic_target.png',
+        previewUrl: srcUrl,
+        file: srcFile,
+        dimensions: '1024 × 1024 px',
       };
 
       setReferenceImage(refMeta);
       setSourceImage(srcMeta);
-      addLog('Synthetic pair loaded: reference.png and synthetic_target.png (7° rotation / 0.92 scale).', 'success');
+      addLog('Synthetic pair loaded with active File buffers ready for real backend registration.', 'success');
       addToast('Synthetic generated pair loaded into UI with visual preview!', 'success', 'Synthetic Loaded');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to load synthetic pair';
@@ -348,15 +424,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const runRegistration = async () => {
     if (isProcessing) return;
-
-    // Warn but allow demo run without files
-    if (!referenceImage || !sourceImage) {
-      addToast(
-        'No images uploaded — running in demo/simulation mode.',
-        'warn',
-        'Demo Mode'
-      );
-    }
 
     setIsProcessing(true);
     setIsComplete(false);
@@ -369,12 +436,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setRoutedMatcher(`ROUTED TO: ${label.toUpperCase()}`);
     navigateTo('register');
     addToast(`Pipeline dispatched to matcher: ${label}`, 'info', 'Registration Started');
-    addLog('Starting SELENE-MATCH registration pipeline.', 'info');
+    addLog('Starting SELENE-MATCH registration pipeline on backend.', 'info');
 
     try {
+      // Guarantee File objects exist for both inputs
+      let refF = referenceImage?.file ?? null;
+      let movF = sourceImage?.file ?? null;
+
+      if (!refF && referenceImage?.previewUrl) {
+        try {
+          refF = await createFileFromUrl(referenceImage.previewUrl, referenceImage.name || 'reference.png');
+          setReferenceImage((prev) => (prev ? { ...prev, file: refF! } : null));
+        } catch {}
+      }
+      if (!movF && sourceImage?.previewUrl) {
+        try {
+          movF = await createFileFromUrl(sourceImage.previewUrl, sourceImage.name || 'source.png');
+          setSourceImage((prev) => (prev ? { ...prev, file: movF! } : null));
+        } catch {}
+      }
+      if (!refF || !movF) {
+        throw new Error('Please upload or load both Reference and Source images to execute registration.');
+      }
+
       const { results: res } = await seleneApi.runRegistration(
-        referenceImage?.file ?? null,
-        sourceImage?.file ?? null,
+        refF,
+        movF,
         selectedMatcher,
         sourceSensor,
         (stepIndex, msg, percent) => {

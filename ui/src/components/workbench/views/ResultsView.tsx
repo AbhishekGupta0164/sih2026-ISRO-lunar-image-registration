@@ -102,14 +102,22 @@ export const ResultsView: React.FC = () => {
   const [wipeVal, setWipeVal] = useState<number>(50);
 
   const jobId = results.jobId;
-  const isReal = isComplete && jobId && !jobId.startsWith('demo_');
+  const isReal = isComplete && Boolean(jobId);
   const registeredUrl = isReal
-    ? seleneApi.productUrl(`/products/${jobId}/registered.png`)
+    ? seleneApi.productUrl(results.registeredPngUrl || `/products/${jobId}/registered.png`)
     : null;
 
   const refUrl = referenceImage?.previewUrl || '/synthetic/reference.png';
   const srcUrl = sourceImage?.previewUrl     || '/synthetic/synthetic_target.png';
   const wipeRightUrl = registeredUrl || srcUrl;
+
+  const checkerboardPlotUrl = isReal && results.checkerboardUrl
+    ? seleneApi.productUrl(results.checkerboardUrl)
+    : null;
+
+  const quiverPlotUrl = isReal && results.quiverUrl
+    ? seleneApi.productUrl(results.quiverUrl)
+    : null;
 
   const residualHeatmapUrl = isReal && results.residualHeatmapUrl
     ? seleneApi.productUrl(results.residualHeatmapUrl)
@@ -228,38 +236,54 @@ export const ResultsView: React.FC = () => {
           {/* CHECKERBOARD TAB */}
           {activeTab === 'checker' && (
             <div className="result-pane">
-              <div className="h-80 rounded-xl border border-slate-800 grid grid-cols-8 grid-rows-8 overflow-hidden relative bg-slate-950">
-                {checkerCells.map((isRef, idx) => {
-                  const row = Math.floor(idx / 8);
-                  const col = idx % 8;
-                  return (
-                    <div key={idx} className="relative overflow-hidden border-[0.5px] border-slate-800/60">
-                      <img
-                        src={isRef ? refUrl : (registeredUrl || srcUrl)}
-                        alt=""
-                        className="absolute max-w-none opacity-90"
-                        style={{
-                          width: '800%',
-                          height: '800%',
-                          left: `${-(col * 100)}%`,
-                          top: `${-(row * 100)}%`
-                        }}
-                      />
-                      <span className="absolute bottom-0.5 right-0.5 font-mono text-[9px] bg-slate-950/90 text-slate-200 px-1 rounded border border-slate-700">
-                        {isRef ? 'REF' : registeredUrl ? 'REG' : 'SRC'}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+              {checkerboardPlotUrl ? (
+                <div className="h-80 rounded-xl overflow-hidden relative border border-slate-800 bg-slate-950 flex items-center justify-center p-2">
+                  <img
+                    src={checkerboardPlotUrl}
+                    alt="Registration Checkerboard Plot"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="h-80 rounded-xl border border-slate-800 grid grid-cols-8 grid-rows-8 overflow-hidden relative bg-slate-950">
+                  {checkerCells.map((isRef, idx) => {
+                    const row = Math.floor(idx / 8);
+                    const col = idx % 8;
+                    return (
+                      <div key={idx} className="relative overflow-hidden border-[0.5px] border-slate-800/60">
+                        <img
+                          src={isRef ? refUrl : (registeredUrl || srcUrl)}
+                          alt=""
+                          className="absolute max-w-none opacity-90"
+                          style={{
+                            width: '800%',
+                            height: '800%',
+                            left: `${-(col * 100)}%`,
+                            top: `${-(row * 100)}%`
+                          }}
+                        />
+                        <span className="absolute bottom-0.5 right-0.5 font-mono text-[9px] bg-slate-950/90 text-slate-200 px-1 rounded border border-slate-700">
+                          {isRef ? 'REF' : registeredUrl ? 'REG' : 'SRC'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
           {/* GCP + QUIVER TAB */}
           {activeTab === 'gcp' && (
             <div className="result-pane">
-              <div className="h-80 rounded-xl overflow-hidden relative border border-slate-800 bg-slate-950">
-                {isComplete ? (
+              <div className="h-80 rounded-xl overflow-hidden relative border border-slate-800 bg-slate-950 flex items-center justify-center">
+                {quiverPlotUrl ? (
+                  <img
+                    src={quiverPlotUrl}
+                    alt="GCP Quiver Displacement Plot"
+                    className="w-full h-full object-contain p-2"
+                  />
+                ) : isComplete ? (
                   <GcpCanvas
                     refUrl={refUrl}
                     gcpCount={displayGcps}
