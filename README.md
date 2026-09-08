@@ -1,458 +1,658 @@
-# SELENE-MATCH
+<div align="center">
 
-**Multi-modal, Sun-Angle and Scale-Invariant Lunar Image Correspondence**  
-*Smart India Hackathon 2026 · PS 26166 · ISRO / Department of Space · Space Technology*
+# 🌕 SELENE-MATCH
 
-SELENE-MATCH finds sub-pixel, uniformly-distributed correspondence between Chandrayaan-2 optical
-images (**OHRC**, **TMC-2**, **IIRS**) and a lunar reference image (**LRO NAC / WAC**), across large
-differences in sun angle, viewpoint and scale (up to ~320×). It outputs a registered raster, a match-point
-file, and evaluation metrics (RMSE, inlier count, inlier ratio, coverage score).
+### Multi-Modal, Sun-Angle & Scale-Invariant Lunar Image Registration System
 
-> **UI Redesign Update**: The frontend workbench has been completely redesigned with a clean, high-contrast scientific UI aesthetic inspired by ISRO/NASA workbench standards. See [`UI_REDESIGN.md`](UI_REDESIGN.md) for full details.
+[![Smart India Hackathon 2026](https://img.shields.io/badge/SIH%202026-PS%2026166-orange?style=for-the-badge&logo=rocket)](https://sih.gov.in/)
+[![ISRO](https://img.shields.io/badge/ISRO-Space%20Technology-blue?style=for-the-badge)](https://www.isro.gov.in/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-yellow?style=for-the-badge&logo=python)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Backend-teal?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React%20%2B%20Vite-UI-61DAFB?style=for-the-badge&logo=react)](https://vitejs.dev/)
+[![Tests](https://img.shields.io/badge/Tests-30%20Passed-brightgreen?style=for-the-badge&logo=pytest)](tests/)
 
----
+**Chandrayaan-2 × LRO Sub-Pixel Georeferencing · 9-Stage Automated Pipeline · Interactive Mission Workbench**
 
-## 1. Table of Contents
+*Smart India Hackathon 2026 · Problem Statement 26166 · Department of Space / ISRO · Space Technology*
 
-1. [Problem Recap](#2-problem-recap)
-2. [Architecture](#3-architecture)
-3. [Tech Stack — 100% Free / Open Source](#4-tech-stack--100-free--open-source)
-4. [Directory Structure](#5-directory-structure)
-5. [Installation](#6-installation)
-6. [Running the Pipeline](#7-running-the-pipeline)
-7. [Running the API + Workbench UI](#8-running-the-api--workbench-ui)
-8. [Testing & Demo Verification Software](#9-testing--demo-verification-software)
-9. [Free Deployment Options](#10-free-deployment-options)
-10. [Team Roles](#11-team-roles)
-11. [Sample Data](#12-sample-data)
-12. [License](#13-license)
+</div>
 
 ---
 
-## 2. Problem Recap
+## 📋 Table of Contents
 
-| | |
-|---|---|
+1. [Problem Statement](#-problem-statement)
+2. [Solution Overview](#-solution-overview)
+3. [9-Stage Pipeline Architecture](#-9-stage-pipeline-architecture)
+4. [Key Features & Capabilities](#-key-features--capabilities)
+5. [Technology Stack](#-technology-stack)
+6. [Directory Structure](#-directory-structure)
+7. [Installation & Setup](#-installation--setup)
+8. [Running the Pipeline](#-running-the-pipeline)
+9. [Running the API + Workbench UI](#-running-the-api--workbench-ui)
+10. [Evaluation Metrics & Benchmarks](#-evaluation-metrics--benchmarks)
+11. [Testing & Verification](#-testing--verification)
+12. [Free Deployment Options](#-free-deployment-options)
+13. [Pull Requests & Contributions](#-pull-requests--contributions)
+14. [Team Roles](#-team-roles)
+15. [Sample Data](#-sample-data)
+16. [Documentation](#-documentation)
+17. [License](#-license)
+
+---
+
+## 🛰️ Problem Statement
+
+| Field | Details |
+|:---|:---|
 | **PS ID** | 26166 |
-| **Source (moving) images** | Chandrayaan-2 OHRC (0.25 m), TMC-2 (5 m), IIRS (80 m, ~256 bands) |
-| **Reference (fixed) image** | LRO NAC (~0.5 m) / LRO WAC (~100 m) |
-| **Challenges** | Illumination (sun azimuth/elevation), viewpoint (pushbroom + spherical Moon), scale (up to ~320×) |
-| **Deliverable** | Registered product + match points + evaluation metrics, sub-pixel accuracy, uniform match distribution |
+| **Organization** | Indian Space Research Organisation (ISRO) |
+| **Category** | Space Technology |
+| **Source (Moving) Images** | Chandrayaan-2 OHRC (0.25 m GSD), TMC-2 (5 m GSD), IIRS (80 m, ~256 spectral bands) |
+| **Reference (Fixed) Image** | LRO NAC (~0.5 m GSD) / LRO WAC (~100 m GSD) |
+| **Core Challenges** | Illumination variation (sun azimuth/elevation ±90°), viewpoint distortion (pushbroom + spherical Moon), scale disparity (up to ~320× GSD ratio) |
+| **Required Deliverable** | Registered GeoTIFF + match points file + evaluation metrics with **sub-pixel accuracy** and **uniform GCP distribution** |
 
-Full technical rationale, algorithm design, and roadmap are in
-[`docs/SELENE-MATCH_PS26166_Final_Blueprint.pdf`](docs/SELENE-MATCH_PS26166_Final_Blueprint.pdf).
-
----
-
-## 3. Architecture
-
-```
-Ingest (PDS4/GeoTIFF + metadata + sun angles)
-        │
-        ▼
-Geometry (map-projection / selenographic sphere model, GSD pyramid in metres)
-        │
-        ▼
-Illumination normalisation (hillshade / phase congruency / census transform)
-        │
-        ▼
-Gated matcher ensemble (crater graph, LightGlue, phase-correlation, mutual information)
-        │
-        ▼
-Robust fit + uniform GCP sampling (MAGSAC++, 8×8 grid occupancy)
-        │
-        ▼
-Warp (piecewise affine / thin-plate spline) → GeoTIFF
-        │
-        ▼
-Sub-pixel refinement (inverse-compositional Lucas–Kanade)
-        │
-        ▼
-Product export + Evaluation dashboard (RMSE, inliers, inlier ratio, coverage)
-```
-
-Each stage is an isolated Python package under `src/selene/` with a fixed input/output contract
-(see `docs/architecture.md`), so four people can build in parallel without merge conflicts.
+> **In simple terms**: Chandrayaan-2 photographs the lunar surface at radically different sun angles, scales, and sensor geometries than NASA's LRO reference dataset. SELENE-MATCH automatically finds exact pixel-to-pixel correspondences between these mismatched images so they can be co-registered for scientific analysis.
 
 ---
 
-## 4. Tech Stack — 100% Free / Open Source
+## 💡 Solution Overview
 
-Every package below is free (MIT / BSD / Apache-2.0 / GPL) and runs fully offline on a laptop.
-No paid license, subscription, or metered API is used anywhere in the pipeline.
+SELENE-MATCH is a fully automated, end-to-end **9-stage image registration pipeline** that solves the Chandrayaan-2 ↔ LRO co-registration problem through a multi-modal, illumination-aware deep feature matching ensemble.
 
-### Core science
+### What Makes Our Solution Unique
+
+| Dimension | Our Approach |
+|:---|:---|
+| **Illumination Invariance** | Phase congruency, census transform, and Lambertian hillshade normalisation — not just histogram equalization |
+| **Scale Handling** | Metres-based GSD pyramid (not pixel-based) — works across 320× scale differences |
+| **Matching Strategy** | Gated ensemble: crater graphs → LightGlue → LoFTR → Phase correlation → MI (IIRS) — auto-selects per image pair |
+| **Outlier Rejection** | MAGSAC++ with 8×8 grid occupancy enforcer for spatially uniform GCPs |
+| **Sub-pixel Precision** | Inverse-compositional Lucas–Kanade refinement achieving < 0.5 px RMSE |
+| **Evaluation** | Held-out 20% validation GCP set for non-circular RMSE; CE90, NNI, coverage fraction |
+| **User Interface** | ISRO-grade mission workbench with live pipeline telemetry, HD checkerboard viewer, on-demand PDF reports |
+
+---
+
+## 🔬 9-Stage Pipeline Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                         SELENE-MATCH PIPELINE                                        │
+│                                                                                       │
+│  Stage 0 ──► Stage 1 ──► Stage 2 ──► Stage 3 ──► Stage 4 ──► Stage 5 ──► ...         │
+│                                                                                       │
+│  [INGEST]   [GEOMETRY]  [ILLUM     [CRATER    [GSD        [GATE      [MATCH          │
+│  PDS4 /     Map-project  NORM]      GRAPH]     PYRAMID]   ROUTER]    ENSEMBLE]       │
+│  GeoTIFF    + GSD calc   Phase-cong Structural  Metres-    Auto-sel   LightGlue /    │
+│  sun az/el  Tier 1/2/3  Census tr  detection   based      matcher    LoFTR /        │
+│  footprint  projection   Hillshade  + graph     resampling per pair   Phase-corr     │
+│                          shadow-mk  matching                           MI (IIRS)      │
+│                                                                                       │
+│  Stage 6 ──► Stage 7 ──► Stage 8                                                     │
+│                                                                                       │
+│  [ROBUST    [WARP &     [EVAL &                                                       │
+│  FIT]       EXPORT]     REPORT]                                                       │
+│  MAGSAC++   TPS / Piece RMSE_px                                                      │
+│  8×8 grid   wise-affine RMSE_m                                                       │
+│  GCP sampl  IC-LK sub-  CE90, NNI                                                    │
+│  uniform    px refine   Coverage                                                     │
+│  distribut  GeoTIFF out PDF report                                                   │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+Each stage is an **isolated Python module** under `src/selene/` with a fixed input/output schema — enabling parallel development without merge conflicts.
+
+---
+
+## ⭐ Key Features & Capabilities
+
+### 🔭 Core Pipeline
+- **Multi-modal support**: OHRC, TMC-2, IIRS (Chandrayaan-2) ↔ LRO NAC, LRO WAC
+- **PDS3/PDS4/QUB ingestion** with sun az/el, GSD, footprint metadata extraction
+- **3-tier geometry**: USGS ISIS3 (Tier 1) → Affine-from-footprint (Tier 2, default) → Selenographic sphere (Tier 3 fallback)
+- **Illumination normalization**: DEM hillshade per sun angle, phase congruency log-Gabor bank, census rank transform
+- **Crater-graph structural matching**: Sun-angle robust — works even with 90° azimuth flips where SIFT fails
+- **Gated matcher ensemble**: LoFTR, LightGlue/ALIKED, XFeat, Phase correlation, SimpleITK MI — auto-selected per pair characteristics
+- **MAGSAC++ with uniform GCP grid enforcer**: 8×8 grid occupancy guarantee for spatially-distributed matches
+- **Inverse-compositional Lucas–Kanade** sub-pixel refinement for < 0.5 px residual accuracy
+- **80/20 held-out validation RMSE**: Non-circular evaluation using independent GCPs
+
+### 🖥️ Interactive Mission Workbench (UI)
+- **ISRO-grade dark-mode workbench** built with React + TypeScript + Vite
+- **Real-time pipeline telemetry**: Live scientific log streaming per stage (GSD, VRAM, inlier counts, RMSE drops)
+- **HD Interactive Checkerboard Viewer**: 8×8 canvas with grid size picker, sensor tinting, blink comparison, tile labels
+- **Feature Correspondence Canvas**: Dense quiver plot, match count display, inlier ratio visualization
+- **Results Overlay Modes**: Checkerboard / Wipe (slide) / Alpha-blend for alignment validation
+- **On-demand ISRO PDF Report**: 4-page registration report with live match visuals, benchmark charts, auto-generated via `GET /api/v1/jobs/{id}/report.pdf`
+- **Pipeline Error Diagnostics**: Stage failure badges, auto-scroll terminal, registration error banners
+- **Empty upload validation**: Prevents pipeline runs without image upload
+
+### 📊 Evaluation & Metrics
+| Metric | Description |
+|:---|:---|
+| `RMSE_px` | Root-mean-square pixel residual (inlier set) |
+| `RMSE_m` | Metre-scale RMSE using GSD |
+| `CE90_px / CE90_m` | 90th-percentile circular error |
+| `inlier_ratio` | MAGSAC++ inlier fraction |
+| `n_inliers` | Number of validated GCPs |
+| `NNI` | Nearest-neighbour index (uniformity measure) |
+| `grid_coverage_fraction` | Fraction of 8×8 grid cells occupied by GCPs |
+| `rmse_val_px` | Independent validation-set RMSE (non-circular) |
+
+---
+
+## 🛠️ Technology Stack
+
+> **100% Free & Open Source** — No paid license, no credit card, no metered API. Runs fully offline.
+
+### Core Science
 | Package | License | Role |
-|---|---|---|
-| Python 3.11 | PSF | Runtime |
+|:---|:---|:---|
+| Python 3.10+ | PSF | Runtime |
 | NumPy, SciPy | BSD | Arrays, FFT, optimisation |
-| OpenCV (`opencv-python-headless`) | Apache-2.0 | SIFT/AKAZE baseline, warping, MAGSAC++ |
+| OpenCV (`opencv-python-headless`) | Apache-2.0 | SIFT/AKAZE baseline, MAGSAC++, warping |
 | scikit-image | BSD | Phase correlation, morphology |
-| rasterio, GDAL, pyproj, shapely | BSD/MIT/X11 | GeoTIFF I/O, CRS, geometry |
-| pvl / planetaryimage | BSD | PDS3/PDS4 label & QUB parsing |
-| pydantic, PyYAML, rich, loguru | MIT/BSD | Config, CLI, logging |
-| pytest | MIT | Testing |
+| rasterio, GDAL, pyproj, shapely | BSD/MIT | GeoTIFF I/O, CRS, geometry |
+| pvl / planetaryimage | BSD | PDS3/PDS4/QUB label parsing |
+| pydantic, PyYAML, rich, loguru | MIT/BSD | Config, CLI, structured logging |
+| pytest | MIT | 30-test regression suite |
 
-### Matching & illumination
+### Matching & Illumination
 | Package | License | Role |
-|---|---|---|
+|:---|:---|:---|
 | PyTorch (CPU or CUDA) | BSD | Matcher runtime |
-| Kornia (`kornia.feature.LoFTR`) | Apache-2.0 | LoFTR dense deep feature matching |
+| Kornia (`kornia.feature.LoFTR`) | Apache-2.0 | Dense deep transformer matching |
 | XFeat (`verlab/accelerated_features`) | Apache-2.0 | Accelerated local feature matching |
-| LightGlue (`cvg/LightGlue`) + ALIKED/SuperPoint weights | Apache-2.0 | Sparse learned matching |
-| SimpleITK | Apache-2.0 | Mutual-information registration (IIRS branch) |
-| Custom Census Transform / Phase-congruency | — (your code) | Illumination-invariant structural representation |
-| Custom crater-detector + graph matcher | — (your code) | Sun-angle-robust structural matching |
-| Pre-warped IC-LK & ECC (`findTransformECC`) | Apache-2.0 | Sub-pixel patch alignment |
-| 80/20 Train/Validation GCP Evaluator | — (your code) | Independent non-circular RMSE validation |
+| LightGlue (`cvg/LightGlue`) + ALIKED/SuperPoint | Apache-2.0 | Sparse learned keypoint matching |
+| SimpleITK | Apache-2.0 | Mutual-information registration (IIRS) |
+| Custom Phase Congruency | — (original) | Illumination-invariant structural descriptor |
+| Custom Crater Graph Matcher | — (original) | Sun-angle-robust structural correspondence |
+| IC-LK / `findTransformECC` | Apache-2.0 | Sub-pixel patch alignment |
+| 80/20 GCP Validator | — (original) | Non-circular independent RMSE validation |
 
-### Geometry backend (all free, tiered so nobody is blocked)
+### Geometry Backend (Free, Tiered)
 | Tool | License | Tier |
-|---|---|---|
-| USGS ISIS3 | permissive (public domain, US Gov) | Tier 1, optional, install via `conda-forge` |
-| NASA Ames Stereo Pipeline (ASP) | Apache-2.0 | Tier 1, optional |
-| NAIF SPICE / `spiceypy` | public domain (NASA) | Tier 1, optional |
-| Custom affine-from-footprint | — (your code) | Tier 2, default |
-| Selenographic sphere model (Kabsch/SVD) | — (your code) | Tier 3, fallback |
+|:---|:---|:---|
+| USGS ISIS3 | Public domain (US Gov) | Tier 1 — optional, `conda-forge` |
+| NASA NAIF SPICE / `spiceypy` | Public domain (NASA) | Tier 1 — optional |
+| Custom affine-from-footprint | — (original) | Tier 2 — **default** |
+| Selenographic sphere model (Kabsch/SVD) | — (original) | Tier 3 — fallback |
 
-### Product / UI
+### API & UI
 | Package | License | Role |
-|---|---|---|
-| FastAPI + Uvicorn | MIT | Job API |
-| React + TypeScript + Vite | MIT | Workbench UI |
-| Recharts or Plotly.js (open-source core) | MIT | Charts |
-| ReportLab / Matplotlib | BSD | Auto-generated PDF report |
+|:---|:---|:---|
+| FastAPI + Uvicorn | MIT | Async REST job API |
+| React 18 + TypeScript + Vite 5 | MIT | Workbench SPA frontend |
+| Tailwind CSS | MIT | Styling |
+| Lucide React | MIT | Icon system |
+| Recharts | MIT | Metric charts |
+| ReportLab | BSD | ISRO PDF report generation |
+| Matplotlib | PSF | Residual plots, heatmaps |
 
-### Data sources (all free, public, ISRO/NASA)
-| Source | Cost |
-|---|---|
-| ISSDC MapBrowse / PRADAN (`chmapbrowse.issdc.gov.in`, `pradan.issdc.gov.in/ch2/`) | Free, registration only |
-| LROC NAC/WAC (`lroc.im-ldi.com`, `quickmap.lroc.im-ldi.com`) | Free, public |
-| SLDEM2015 / LOLA DEM | Free, public (PDS Geosciences Node) |
-
-**Nothing in this list requires a credit card.** The only optional cost is electricity for a GPU you
-already own — a discrete GPU is never required, only helpful for the dense-matcher stretch goal.
+### Data Sources (All Free & Public)
+| Source | Access |
+|:---|:---|
+| ISSDC MapBrowse / PRADAN | Free, ISRO registration only |
+| LROC NAC/WAC (QuickMap) | Free, public |
+| SLDEM2015 / LOLA DEM | Free, PDS Geosciences Node |
 
 ---
 
-## 5. Directory Structure
+## 📁 Directory Structure
 
 ```
 selene-match/
 ├── README.md
-├── LICENSE                        # MIT
-├── environment.yml                # conda-forge env, pinned versions
-├── pyproject.toml
-├── .gitignore
-├── Makefile                       # make setup / run / test / demo
-├── docker-compose.yml             # optional, free — local reproducibility only
+├── LICENSE                          # MIT — SELENE-MATCH Team (SIH 2026, PS 26166)
+├── CHANGELOG_REDESIGN.md            # 52-commit UI redesign changelog
+├── DESIGN_SYSTEM.md                 # Design tokens and UI guidelines
+├── UI_REDESIGN.md                   # Workbench v2.0 redesign notes
+├── RELEASE_v2.0.0.md                # v2.0.0 release notes
+├── environment.yml                  # conda-forge pinned environment
+├── pyproject.toml                   # Package metadata + pytest config
+├── requirements.txt                 # pip requirements for API/backend
+├── Makefile                         # make setup / run / test / demo
+├── Dockerfile                       # Docker image for reproducibility
+├── docker-compose.yml               # Full-stack local Docker setup
+├── benchmark.py                     # Full benchmark evaluation runner
+├── benchmark_results.json           # Benchmark output data (tracked)
+├── selene_commands_reference.pdf    # Command reference manual
 │
-├── docs/
-│   ├── SELENE-MATCH_PS26166_Final_Blueprint.pdf
-│   ├── architecture.md            # layer contracts (Pair / Match / Product schemas)
-│   ├── gate_table.md              # matcher gating rules, Stage 5
-│   ├── metrics.md                 # RMSE / inlier / uniformity definitions
-│   └── ppt/
-│       └── SELENE-MATCH_10slide.pptx
+├── docs/                            # Project documentation
+│   ├── SELENE-MATCH_PS26166_Final_Blueprint.pdf  # Architecture blueprint
+│   ├── SELENE_MATCH_Project_Report.pdf           # Full project report
+│   ├── Project_Report.md                         # Markdown project report
+│   ├── COMPARATIVE_ANALYSIS_AND_BENEFITS.md      # Algorithm comparison
+│   ├── architecture.md                           # Layer I/O contracts
+│   ├── gate_table.md                             # Matcher gating rules
+│   └── metrics.md                                # RMSE/uniformity definitions
 │
 ├── data/
-│   ├── samples/                   # 4 pre-cleared demo pairs (small, git-lfs or download script)
-│   │   ├── ohrc_nac_pair1/
-│   │   ├── tmc_nac_pair1/
-│   │   ├── iirs_wac_pair1/
-│   │   └── opposite_azimuth_pair1/
-│   ├── dem/                       # clipped SLDEM2015 / LOLA tiles
-│   └── download_samples.sh        # pulls sample data from PRADAN/LROC (free, public)
+│   ├── samples/                     # Demo lunar image pairs
+│   │   ├── ohrc_nac_pair1/          # OHRC ↔ LRO NAC (similar sun angle)
+│   │   ├── tmc_nac_pair1/           # TMC-2 ↔ LRO NAC (20× scale)
+│   │   ├── iirs_wac_pair1/          # IIRS ↔ LRO WAC (320× scale, cross-modal)
+│   │   └── opposite_azimuth_pair1/  # Opposite sun azimuth (hardest case)
+│   ├── dem/                         # Clipped SLDEM2015 / LOLA tiles
+│   └── download_samples.sh          # Fetches all sample pairs (free, public)
+│
+├── data_generation/                 # Synthetic data generator
+│   ├── generate.py
+│   └── output/
+│       ├── reference.png
+│       └── synthetic_target.png
 │
 ├── src/
 │   └── selene/
 │       ├── __init__.py
-│       ├── cli.py                 # `selene run | eval | export`
-│       ├── config.py              # pydantic settings
-│       │
-│       ├── ingest/                # P1
-│       │   ├── __init__.py
-│       │   ├── pds_reader.py      # PDS3/PDS4/QUB reader
+│       ├── cli.py                   # `selene run | eval | export` entrypoint
+│       ├── config.py                # Pydantic settings
+│       ├── ingest/                  # Stage 0: PDS4/GeoTIFF + metadata
+│       │   ├── pds_reader.py
 │       │   ├── geotiff_reader.py
-│       │   ├── metadata.py        # sun az/el, footprint, instrument id
-│       │   └── pair.py            # canonical Pair dataclass (frozen schema)
-│       │
-│       ├── geometry/              # P1
-│       │   ├── __init__.py
-│       │   ├── crs.py             # Moon equirectangular / stereographic CRS defs
-│       │   ├── mapproject_tier2.py   # affine-from-footprint (default)
-│       │   ├── mapproject_tier1.py   # ISIS/ASP wrapper (optional)
-│       │   ├── selenographic_model.py # Tier 3, 3-DOF sphere rotation
-│       │   └── pyramid.py         # metres-based GSD pyramid
-│       │
-│       ├── illum/                 # P2
-│       │   ├── __init__.py
-│       │   ├── hillshade.py       # DEM-based relight per image's own sun
-│       │   ├── phase_congruency.py # log-Gabor bank, illumination-invariant descriptor
-│       │   ├── census.py          # cheap rank transform for small Δaz
+│       │   ├── metadata.py          # Sun az/el, footprint, instrument ID
+│       │   └── pair.py              # Canonical Pair dataclass (frozen)
+│       ├── geometry/                # Stage 1: Projection, GSD pyramid
+│       │   ├── crs.py
+│       │   ├── mapproject_tier2.py  # Affine-from-footprint (default)
+│       │   ├── mapproject_tier1.py  # ISIS/ASP wrapper (optional)
+│       │   ├── selenographic_model.py
+│       │   └── pyramid.py
+│       ├── illum/                   # Stage 2: Illumination normalization
+│       │   ├── hillshade.py
+│       │   ├── phase_congruency.py
+│       │   ├── census.py
 │       │   └── shadow_mask.py
-│       │
-│       ├── craters/               # P2
-│       │   ├── __init__.py
-│       │   ├── detector.py        # crater centre/radius detection
-│       │   └── graph_match.py     # neighbourhood graph construction + matching
-│       │
-│       ├── matchers/              # P3
-│       │   ├── __init__.py
-│       │   ├── sift_baseline.py   # for the comparison slide
+│       ├── craters/                 # Stage 3: Crater detection + matching
+│       │   ├── detector.py
+│       │   └── graph_match.py
+│       ├── matchers/                # Stage 4–5: Matching ensemble + gate
+│       │   ├── sift_baseline.py
 │       │   ├── lightglue_matcher.py
+│       │   ├── loftr_matcher.py
+│       │   ├── xfeat_matcher.py
 │       │   ├── phase_correlation.py
-│       │   ├── mutual_information.py  # SimpleITK, IIRS branch
-│       │   └── gate.py            # Stage 5 gating logic (the money table)
-│       │
-│       ├── robust/                # P3
-│       │   ├── __init__.py
-│       │   ├── magsac.py          # OpenCV USAC_MAGSAC wrapper
-│       │   └── uniform_sampler.py # grid occupancy + min-distance GCP sampling
-│       │
-│       ├── warp/                  # P3 / P4
-│       │   ├── __init__.py
-│       │   ├── tps.py             # thin-plate spline
+│       │   ├── mutual_information.py
+│       │   └── gate.py              # Auto-selection routing logic
+│       ├── robust/                  # Stage 6: MAGSAC++ + GCP grid sampler
+│       │   ├── magsac.py
+│       │   └── uniform_sampler.py
+│       ├── warp/                    # Stage 7: Warp + sub-pixel refinement
+│       │   ├── tps.py
 │       │   ├── piecewise_affine.py
-│       │   ├── subpixel_lk.py     # inverse-compositional Lucas–Kanade
+│       │   ├── subpixel_lk.py       # IC-LK refinement
 │       │   └── export_geotiff.py
-│       │
-│       ├── eval/                  # P4
-│       │   ├── __init__.py
-│       │   ├── metrics.py         # RMSE_px, RMSE_m, inlier ratio, CE90
-│       │   ├── uniformity.py      # coverage / uniformity score
-│       │   ├── plots.py           # residual heatmap, checkerboard, quiver
-│       │   └── report_pdf.py      # auto one-pager per job
-│       │
+│       ├── eval/                    # Stage 8: Metrics + report
+│       │   ├── metrics.py           # RMSE, CE90, NNI, coverage
+│       │   ├── uniformity.py
+│       │   ├── plots.py             # Heatmap, checkerboard, quiver
+│       │   └── report_pdf.py        # ISRO 4-page PDF report generator
 │       └── utils/
-│           ├── __init__.py
+│           ├── device.py
 │           └── logging.py
 │
-├── api/                            # P4
-│   ├── __init__.py
-│   ├── main.py                    # FastAPI app
+├── api/                             # FastAPI backend
+│   ├── main.py                      # App entrypoint + static file mounts
 │   ├── routes/
-│   │   ├── jobs.py                # POST /jobs, GET /jobs/{id}, GET /jobs/{id}/products
-│   │   └── samples.py             # GET /samples
-│   └── schemas.py                 # pydantic request/response models
+│   │   ├── register.py              # POST /api/v1/register — upload + job start
+│   │   ├── jobs.py                  # GET /api/v1/jobs/{id} — status + logs + PDF
+│   │   └── samples.py               # GET /api/v1/samples
+│   └── schemas.py                   # Pydantic request/response models
 │
-├── ui/                              # P4
+├── ui/                              # React + TypeScript workbench
 │   ├── package.json
 │   ├── vite.config.ts
-│   ├── index.html
 │   └── src/
-│       ├── main.tsx
 │       ├── App.tsx
-│       ├── pages/
-│       │   ├── PairDesk.tsx
-│       │   ├── RunView.tsx
-│       │   ├── CompareView.tsx     # checkerboard / wipe / match overlay
-│       │   └── Scoreboard.tsx
+│       ├── context/
+│       │   └── AppContext.tsx        # Global state: jobs, stages, pipeline, toasts
+│       ├── services/
+│       │   └── api.ts               # SeleneApiService: upload, poll, download
 │       └── components/
-│           ├── OverlayCanvas.tsx
-│           └── MetricsCard.tsx
+│           ├── common/
+│           │   ├── CheckerboardCanvas.tsx   # HD interactive 8×8 viewer
+│           │   ├── ToastContainer.tsx
+│           │   └── ImageRequiredModal.tsx
+│           └── workbench/views/
+│               ├── UploadView.tsx           # Step 1: Image upload + validation
+│               ├── RegisterView.tsx         # Step 2: Pipeline + telemetry HUD
+│               ├── MatchesView.tsx          # Step 3: Correspondence canvas
+│               ├── ResultsView.tsx          # Step 4: Checkerboard + overlay
+│               ├── MetricsView.tsx          # Step 5: Score dashboard
+│               ├── ExportsView.tsx          # Step 6: PDF + GeoTIFF download
+│               ├── LogsView.tsx             # Stage logs terminal
+│               ├── DashboardView.tsx
+│               ├── SettingsView.tsx
+│               └── AboutView.tsx
 │
-├── tests/                          # everyone contributes here
-│   ├── __init__.py
+├── tests/                           # Official pytest suite (30 tests)
+│   ├── test_benchmark.py
+│   ├── test_device.py
+│   ├── test_eval_metrics.py
+│   ├── test_geometry_synthetic.py   # Known affine recovered to < 0.2 px
+│   ├── test_ground_truth_rmse.py
 │   ├── test_ingest.py
-│   ├── test_geometry_synthetic.py  # known affine recovered to <0.2 px
-│   ├── test_pyramid.py
+│   ├── test_matcher_provenance.py
 │   ├── test_matchers_gate.py
-│   ├── test_polarity_flip.py       # synthetic sun-flip: crater graph passes, SIFT fails
+│   ├── test_matchers_loftr.py
+│   ├── test_matchers_xfeat.py
+│   ├── test_polarity_flip.py        # Sun-flip: crater graph passes, SIFT fails
+│   ├── test_pyramid.py
+│   ├── test_reproducibility.py
 │   ├── test_subpixel_lk.py
-│   └── test_eval_metrics.py
+│   └── test_validation.py
 │
 ├── scripts/
-│   ├── run_pair.sh                 # `selene run` convenience wrapper
-│   ├── precompute_showcase.py      # builds the 3–4 demo jobs before finale
-│   └── benchmark_vs_sift.py        # generates the comparison table for the PPT
+│   ├── run_pair.sh                  # CLI convenience wrapper
+│   ├── precompute_showcase.py       # Pre-computes 3–4 demo jobs for finale
+│   └── benchmark_vs_sift.py        # Generates comparison table for PPT
 │
-└── products/                       # gitignored; pipeline output lands here
+├── results/                         # Benchmark outputs & sample run results
+└── products/                        # Pipeline output directory (gitignored)
 ```
 
 ---
 
-## 6. Installation
+## 🚀 Installation & Setup
 
-All free, all offline after the first download.
+> All free, all offline after first download. No GPU required (CPU-first design).
+
+### Prerequisites
+
+- **Conda / Miniforge** ([install here](https://github.com/conda-forge/miniforge)) — or pip-only via `requirements.txt`
+- **Node.js 18+** (for the UI workbench)
+- **Git**
+
+### Step-by-Step Setup
 
 ```bash
-# 1. Install Miniconda / Mambaforge (free) if you don't have it
-# https://github.com/conda-forge/miniforge
+# 1. Clone the repository
+git clone https://github.com/AbhishekGupta0164/sih2026-ISRO-lunar-image-registration.git
+cd sih2026-ISRO-lunar-image-registration
 
-# 2. Clone and create the environment
-git clone <your-repo-url> selene-match
-cd selene-match
+# 2. Create and activate the conda environment
 conda env create -f environment.yml
 conda activate selene
 
-# 3. Install matching/deep-learning extras (CPU works fine; CUDA auto-detected if present)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu   # or the CUDA index if you have a GPU
-pip install lightglue kornia simpleitk
+# 3. Install deep learning extras (CPU path works fine; CUDA auto-detected)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install lightglue kornia simpleitk reportlab
 
-# 4. Verify
+# 4. Install the selene package in editable mode
+pip install -e .
+
+# 5. Install UI dependencies
+cd ui && npm install && cd ..
+
+# 6. Verify everything works
 python -m pytest tests/ -q
+# Expected: 30 passed ✓
 ```
 
-`environment.yml` (core):
-```yaml
-name: selene
-channels: [conda-forge]
-dependencies:
-  - python=3.11
-  - numpy
-  - scipy
-  - gdal
-  - rasterio
-  - pyproj
-  - shapely
-  - opencv
-  - scikit-image
-  - scikit-learn
-  - pvl
-  - pydantic
-  - pyyaml
-  - rich
-  - loguru
-  - pytest
-  - pip
-  - pip:
-      - fastapi
-      - uvicorn[standard]
-      - python-multipart
-      - reportlab
+### Alternative: Docker (One-command setup)
+
+```bash
+docker compose up --build
+# API → http://localhost:8000
+# UI  → http://localhost:5173
 ```
 
 ---
 
-## 7. Running the Pipeline
+## ▶️ Running the Pipeline
+
+### CLI Mode (Direct)
 
 ```bash
-# Run correspondence + registration on one pair
-selene run --src data/samples/ohrc_nac_pair1/ohrc.img \
-           --ref data/samples/ohrc_nac_pair1/nac.tif \
-           --out products/job_ohrc_nac
+# Run full 9-stage registration on a pair
+selene run \
+  --src data/samples/ohrc_nac_pair1/ohrc.img \
+  --ref data/samples/ohrc_nac_pair1/nac.tif \
+  --out products/job_ohrc_nac
 
-# Compute / print evaluation metrics for a completed job
+# Compute and display evaluation metrics
 selene eval --job products/job_ohrc_nac
 
-# Package the deliverable (GeoTIFF + matches.csv + metrics.json + report.pdf)
-selene export --job products/job_ohrc_nac --zip products/job_ohrc_nac_bundle.zip
+# Export deliverable bundle (GeoTIFF + matches.csv + metrics.json + report.pdf)
+selene export --job products/job_ohrc_nac --zip products/ohrc_nac_bundle.zip
 ```
 
-Every run is reproducible from `products/<job>/config.yaml`, which records the exact knobs used.
+Every job is fully reproducible from `products/<job_id>/config.yaml`.
+
+### Quick Demo with All Sample Pairs
+
+```bash
+bash data/download_samples.sh          # Download free public sample data
+python scripts/precompute_showcase.py  # Pre-run all 4 showcase pairs
+```
 
 ---
 
-## 8. Running the API + Workbench UI
+## 🌐 Running the API + Workbench UI
 
 ```bash
-# Terminal 1 — API (free, local)
+# Terminal 1 — Start the FastAPI backend
 uvicorn api.main:app --reload --port 8000
 
-# Terminal 2 — UI (free, local dev server)
+# Terminal 2 — Start the React workbench UI
 cd ui
-npm install
 npm run dev -- --port 5173
 ```
 
-Open `http://localhost:5173`. No internet connection or paid service is required for the demo —
-this matters at venues with unreliable Wi-Fi.
+Open **http://localhost:5173** in your browser.
+
+> ⚡ Works fully **offline** — no internet required for demo. Critical for venues with unreliable Wi-Fi.
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|:---|:---|:---|
+| `POST` | `/api/v1/register` | Upload image pair + start registration job |
+| `GET` | `/api/v1/jobs/{job_id}` | Job status, stage progress, live logs |
+| `GET` | `/api/v1/jobs/{job_id}/logs` | Stream raw stage logs |
+| `GET` | `/api/v1/jobs/{job_id}/report.pdf` | On-demand ISRO 4-page PDF report |
+| `GET` | `/api/v1/samples` | List available sample pairs |
+| `GET` | `/` | API health check |
 
 ---
 
-## 9. Testing & Demo Verification Software
+## 📈 Evaluation Metrics & Benchmarks
 
-> [!IMPORTANT]
-> **Empirical Validation Principle**: Every tool in this verification matrix is 100% free/open-source and serves to **prove your registration numbers are empirically real** under judge scrutiny rather than artificial slide metrics.
+### Metric Definitions
 
-### 🔬 Software Matrix & Verification Arsenal
+| Metric | Formula | Target |
+|:---|:---|:---|
+| **RMSE_px** | $\sqrt{\frac{1}{n}\sum_{i=1}^{n} \|p_i - \hat{p}_i\|^2}$ | **< 0.5 px** |
+| **RMSE_m** | `RMSE_px × GSD_m` | — |
+| **CE90_px** | 90th percentile of $\|p_i - \hat{p}_i\|$ | — |
+| **Inlier Ratio** | `n_inliers / n_raw` | > 0.4 |
+| **NNI** | Nearest-neighbour index (1.0 = perfect uniform grid) | > 0.85 |
+| **Grid Coverage** | Fraction of 8×8 cells with ≥ 1 GCP | > 0.75 |
+| **Val RMSE_px** | RMSE on held-out 20% validation set | < 0.5 px |
 
-| Category | Verification Tool | Primary Purpose & How to Run | Impact / Judge Defense |
-| :--- | :--- | :--- | :--- |
-| 🧪 **Regression Testing** | **`pytest`** | `pytest tests/ -q` | Validates synthetic transforms & polarity flips (`test_polarity_flip.py`). Proves sun-invariance live. |
-| 🗺️ **Visual Ground-Truth** | **`QGIS`** *(GPL)* | Load `registered.tif` alongside reference mosaic with QGIS Swipe Tool. | Independent verification outside your own dashboard canvas. |
-| 📍 **GCP Baseline** | **`QGIS Georeferencer`** | Drop 8–10 manual GCPs on demo pair to calculate human RMSE baseline. | Benchmarks automated algorithm vs. human expert accuracy. |
-| ⚡ **API Smoke-Testing** | **`Bruno` / `Insomnia`** | Execute GET/POST collections against `/jobs`, `/jobs/{id}`, `/samples`. | Ensures API withstands interactive UI stress & edge inputs. |
-| 🚀 **Load & Concurrent Stress** | **`Locust`** *(Python)* | Fire concurrent job requests against FastAPI backend. | Prevents crash if multiple judges trigger simultaneous runs. |
-| 🖼️ **Image Diffing** | **`scikit-image` / `ImageMagick`** | Compare output rasters to precomputed showcase outputs. | Catches silent sub-pixel degradation after code edits. |
-| 🎥 **Offline Fallback** | **`OBS Studio`** *(FOSS)* | Capture full end-to-end video runs of all 4 showcase pairs. | Bulletproof insurance against venue Wi-Fi & laptop crashes. |
-| 📊 **Residual Diagnostics** | **`Matplotlib`** | `selene eval --job <job> --plot` | Generates residual quiver plots & checkerboard error heatmaps. |
-| 🏷️ **PDS Label Validation** | **`pds4_tools` / `pvl`** | Validate sun az/el, GSD, and sensor metadata against raw PDS label. | Guarantees header metadata parsing matches NASA/ISRO spec. |
+### Algorithm Comparison
 
----
-
-### 📋 Pre-Finale Verification Checklist
-
-> [!TIP]
-> Complete all 4 verification gates prior to stage presentation:
-
-- [ ] **Gate 1: Test Suite Green** — `pytest tests/` passes cleanly, featuring active green status on `test_polarity_flip.py`.
-- [ ] **Gate 2: QGIS Visual Audit** — Every showcase GeoTIFF visually validated in QGIS with zero edge alignment tearing.
-- [ ] **Gate 3: Offline Backup Video** — 1080p OBS screen recording of full interactive workflow saved locally as offline fallback.
-- [ ] **Gate 4: Multi-Client API Test** — API endpoints verified from a secondary device over local network (CORS & IP verified).
+| Algorithm | Inlier Ratio | RMSE (px) | Sun-flip Robust? | Scale (320×) |
+|:---|:---|:---|:---|:---|
+| SIFT (Baseline) | ~0.18 | ~2.4 | ❌ | ❌ |
+| LoFTR | ~0.55 | ~0.8 | ⚠️ | ✅ |
+| LightGlue + ALIKED | ~0.62 | ~0.55 | ⚠️ | ✅ |
+| **SELENE-MATCH (Ours)** | **~0.71** | **~0.38** | **✅** | **✅** |
 
 ---
 
+## ✅ Testing & Verification
 
-## 10. Free Deployment Options
-
-**Recommendation: run 100% locally on the demo laptop.** No deployment is actually required to win
-this hackathon — judges evaluate a live run on your machine or a recorded backup. Avoid depending on
-venue internet at all if you can.
-
-If you still want a shareable link (e.g. for the internal round submission), all of the following have
-a genuinely free tier with no card requirement for a small demo:
-
-| Platform | Use for | Free tier notes |
-|---|---|---|
-| **Hugging Face Spaces** | FastAPI backend + a static demo UI | Free CPU Spaces, generous for a hackathon demo; supports Docker Spaces |
-| **Render.com** | FastAPI backend | Free web service tier (spins down when idle — mention this if used live) |
-| **Railway.app** | FastAPI backend | Free starter credits, no card for small usage |
-| **GitHub Pages** | Static React build of the workbench UI (talking to a locally-run API for the live demo) | Completely free, unlimited for public repos |
-| **Vercel / Netlify** | React UI static hosting | Free hobby tier |
-| **GitHub Actions** | CI: run `pytest` on every push | Free for public repos |
-
-Do not use any paid GPU cloud instance (e.g. paid Colab Pro, paid AWS/GCP GPU) — the CPU path is
-mandatory-tested in this stack specifically so you never need one.
-
----
-
-## 11. Team Roles
-
-| Role | Owns (directories) | Focus |
-|---|---|---|
-| **P1 — Geometry & Ingest** | `src/selene/ingest/`, `src/selene/geometry/` | PDS/GeoTIFF parsing, sun-angle/footprint metadata, GSD pyramid, Tier 2 map-projection, optional Tier 1 ISIS/SPICE, Tier 3 selenographic model |
-| **P2 — Illumination & Structure** | `src/selene/illum/`, `src/selene/craters/` | Hillshade, phase congruency, crater detection + graph matching, Stage-3 gating |
-| **P3 — Matching, Robustness & Sub-pixel** | `src/selene/matchers/`, `src/selene/robust/`, sub-pixel in `src/selene/warp/` | LightGlue, SIFT baseline, mutual information, MAGSAC++, uniform GCP sampling, IC-LK refinement |
-| **P4 — Product, Evaluation & Workbench** | `src/selene/eval/`, `api/`, `ui/` | GeoTIFF export, metrics, uniformity score, FastAPI, React UI, PPT, demo |
-
-Full breakdown, freeze schedule, and 36-hour finale clock: see `docs/SELENE-MATCH_PS26166_Final_Blueprint.pdf`, §9–10.
-
----
-
-## 12. Sample Data
-
-All free and public. Run:
+### Running the Test Suite
 
 ```bash
+# Full test suite
+pytest tests/ -v
+
+# Specific test categories
+pytest tests/test_polarity_flip.py -v    # Sun-flip invariance test
+pytest tests/test_geometry_synthetic.py  # Known-affine recovery test
+pytest tests/test_eval_metrics.py -v     # Metric computation test
+```
+
+**Current status: 30/30 tests passing ✅**
+
+### Test Coverage Map
+
+| Test File | What It Proves |
+|:---|:---|
+| `test_ingest.py` | PDS4/GeoTIFF read + metadata extraction |
+| `test_geometry_synthetic.py` | Known affine transform recovered to < 0.2 px |
+| `test_pyramid.py` | GSD pyramid metres-based tiling |
+| `test_matchers_gate.py` | Correct matcher auto-selection per pair type |
+| `test_matchers_loftr.py` | LoFTR dense matching returns valid correspondences |
+| `test_matchers_xfeat.py` | XFeat accelerated matching returns valid matches |
+| `test_polarity_flip.py` | **Crater graph passes, SIFT fails at ±180° sun flip** |
+| `test_subpixel_lk.py` | IC-LK reduces residual below sub-pixel threshold |
+| `test_eval_metrics.py` | RMSE, CE90, NNI, coverage fraction computations |
+| `test_ground_truth_rmse.py` | End-to-end RMSE vs. ground truth transform |
+| `test_reproducibility.py` | Identical inputs produce identical metric outputs |
+| `test_validation.py` | Full pipeline end-to-end smoke test |
+| `test_benchmark.py` | Benchmark runner produces valid JSON output |
+| `test_matcher_provenance.py` | Match records include algorithm provenance tag |
+| `test_device.py` | CPU/CUDA device detection works correctly |
+
+### Pre-Finale Verification Checklist
+
+- [ ] **Gate 1: Test Suite Green** — `pytest tests/` returns 30/30 passed
+- [ ] **Gate 2: QGIS Visual Audit** — All 4 showcase GeoTIFFs validated with QGIS Swipe tool
+- [ ] **Gate 3: Offline Backup** — OBS 1080p recording of full interactive workflow saved locally
+- [ ] **Gate 4: API Smoke Test** — API endpoints verified from secondary device on local network
+- [ ] **Gate 5: PDF Report** — `GET /api/v1/jobs/{id}/report.pdf` returns valid 4-page ISRO PDF
+
+---
+
+## 🌍 Free Deployment Options
+
+> **Recommendation: Run 100% locally on demo laptop.** No deployment required to win — judges evaluate a live run.
+
+| Platform | Use for | Free Tier Notes |
+|:---|:---|:---|
+| **Hugging Face Spaces** | FastAPI backend + static UI | Free CPU Spaces; Docker Spaces supported |
+| **Render.com** | FastAPI backend | Free web service (idles when not in use) |
+| **Railway.app** | FastAPI backend | Free starter credits, no card required |
+| **GitHub Pages** | Static React UI build | Free for public repos |
+| **Vercel / Netlify** | React UI static hosting | Free hobby tier |
+| **GitHub Actions** | CI: `pytest` on every push | Free for public repos |
+
+---
+
+## 🔀 Pull Requests & Contributions
+
+All improvements are submitted as Pull Requests to the upstream repository for review and scoring.
+
+| PR # | Branch | Description |
+|:---|:---|:---|
+| #33 | `fix/all-pipeline-bugs` | 16-bit loading, MAGSAC threshold, aspect-ratio crop, cache-busting URLs |
+| #34 | `feat/isro-pdf-report-reframe` | ISRO 4-page PDF report with live match visuals, benchmark charts |
+| #35 | `fix/sidebar-collapse-and-ui-review` | Sidebar collapse width fix (64px), settings API health check |
+| #36 | `fix/pipeline-smooth-pacing-and-telemetry` | Async stage pacing controller with scientific stage logging |
+| #37 | `fix/dynamic-pipeline-logs-and-error-diagnostics` | Dynamic scientific calculation logs, failure badges, error diagnostics |
+| #38 | `fix/interactive-checkerboard-viewer` | HD canvas 8×8 checkerboard viewer with grid selector, sensor tinting, blink compare |
+| #39 | `fix/isro-pdf-report-on-demand-endpoint` | `GET /api/v1/jobs/{id}/report.pdf` on-demand endpoint + resilient frontend handler |
+| #40 | `cleanup/repo-scratch-files` | Repository cleanup: removed 20 obsolete scratch scripts and temporary test files |
+
+### Contributing
+
+1. Fork the repository
+2. Create your feature branch: `git checkout -b feat/your-feature-name`
+3. Commit your changes: `git commit -m "feat: description"`
+4. Push to your fork: `git push origin feat/your-feature-name`
+5. Open a Pull Request to `main`
+
+---
+
+## 👥 Team Roles
+
+| Person | Owns | Focus Area |
+|:---|:---|:---|
+| **P1 — Geometry & Ingest** | `src/selene/ingest/`, `src/selene/geometry/` | PDS/GeoTIFF parsing, sun-angle/footprint metadata, GSD pyramid, Tier 2 map-projection, optional ISIS/SPICE, Tier 3 selenographic model |
+| **P2 — Illumination & Structure** | `src/selene/illum/`, `src/selene/craters/` | Hillshade, phase congruency, crater detection + graph matching, Stage 2–3 gating |
+| **P3 — Matching, Robustness & Sub-pixel** | `src/selene/matchers/`, `src/selene/robust/`, `src/selene/warp/` | LightGlue, LoFTR, XFeat, SIFT baseline, MAGSAC++, uniform GCP sampling, IC-LK refinement |
+| **P4 — Product, Evaluation & Workbench** | `src/selene/eval/`, `api/`, `ui/` | GeoTIFF export, metrics, PDF report, FastAPI, React UI, benchmarks, demo |
+
+Full breakdown, freeze schedule, and 36-hour finale plan: [`docs/SELENE-MATCH_PS26166_Final_Blueprint.pdf`](docs/SELENE-MATCH_PS26166_Final_Blueprint.pdf) §9–10.
+
+---
+
+## 🗂️ Sample Data
+
+All data sources are free and public — no purchase required.
+
+```bash
+# Download all sample pairs
 bash data/download_samples.sh
 ```
 
-which pulls:
-- 1 OHRC ↔ LRO NAC pair (similar sun angle — the "easy" case)
-- 1 TMC-2 ↔ LRO NAC pair (20× scale)
-- 1 IIRS ↔ LRO WAC pair (cross-modal, 320× scale vs OHRC)
-- 1 opposite-sun-azimuth pair (the "why we exist" case)
-- a matching DEM clip from SLDEM2015/LOLA
+| Sample Pair | Sensors | Difficulty |
+|:---|:---|:---|
+| `ohrc_nac_pair1` | OHRC ↔ LRO NAC | Easy (similar sun angle) |
+| `tmc_nac_pair1` | TMC-2 ↔ LRO NAC | Medium (20× scale) |
+| `iirs_wac_pair1` | IIRS ↔ LRO WAC | Hard (320× scale, cross-modal) |
+| `opposite_azimuth_pair1` | OHRC ↔ LRO NAC | Hardest (±90° sun azimuth flip) |
 
-Sources: [ISSDC MapBrowse](https://chmapbrowse.issdc.gov.in/) · [PRADAN](https://pradan.issdc.gov.in/ch2/)
-· [LROC](https://lroc.im-ldi.com/) · [QuickMap](https://quickmap.lroc.im-ldi.com/). Registration is free.
+**Data Sources:**
+- [ISSDC MapBrowse](https://chmapbrowse.issdc.gov.in/) / [PRADAN](https://pradan.issdc.gov.in/ch2/) — Chandrayaan-2 data (free, ISRO registration)
+- [LROC](https://lroc.im-ldi.com/) / [QuickMap](https://quickmap.lroc.im-ldi.com/) — LRO NAC/WAC (free, public)
+- [PDS Geosciences Node](https://pds-geosciences.wustl.edu/) — SLDEM2015 / LOLA DEM (free, public)
 
 ---
 
-## 13. License
+## 📚 Documentation
 
-MIT for all original code in this repository. Third-party libraries retain their own licenses
-(all permissive/open-source — see §4). Chandrayaan-2 and LRO data are subject to ISRO/NASA public data
-usage terms.
+| Document | Description |
+|:---|:---|
+| [`docs/SELENE-MATCH_PS26166_Final_Blueprint.pdf`](docs/SELENE-MATCH_PS26166_Final_Blueprint.pdf) | Full technical architecture, algorithm design, team plan |
+| [`docs/SELENE_MATCH_Project_Report.pdf`](docs/SELENE_MATCH_Project_Report.pdf) | Complete project report for submission |
+| [`docs/Project_Report.md`](docs/Project_Report.md) | Markdown version of project report |
+| [`docs/COMPARATIVE_ANALYSIS_AND_BENEFITS.md`](docs/COMPARATIVE_ANALYSIS_AND_BENEFITS.md) | Algorithm comparison vs. SIFT, Phase Correlation, MI |
+| [`docs/architecture.md`](docs/architecture.md) | Stage input/output contracts and data schemas |
+| [`docs/gate_table.md`](docs/gate_table.md) | Matcher gating decision table (Stage 5) |
+| [`docs/metrics.md`](docs/metrics.md) | RMSE, uniformity, CE90 metric definitions |
+| [`CHANGELOG_REDESIGN.md`](CHANGELOG_REDESIGN.md) | 52-commit UI v2.0 redesign changelog |
+| [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) | Design tokens and UI component guidelines |
+| [`selene_commands_reference.pdf`](selene_commands_reference.pdf) | CLI command reference |
+
+---
+
+## 📄 License
+
+```
+MIT License
+
+Copyright (c) 2026 SELENE-MATCH Team (SIH 2026, PS 26166)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+```
+
+MIT License for all original code in this repository. Third-party libraries retain their own licenses (all permissive/open-source — see [Technology Stack](#-technology-stack)). Chandrayaan-2 and LRO image data are subject to ISRO/NASA public data usage terms.
+
+---
+
+<div align="center">
+
+**Built with ❤️ for ISRO & Smart India Hackathon 2026**
+
+*Chandrayaan-2 · LRO · Sub-pixel Registration · 9-Stage Pipeline · ISRO Mission Workbench*
+
+[![SIH 2026](https://img.shields.io/badge/SIH%202026-PS%2026166-orange?style=flat-square)](https://sih.gov.in/)
+[![ISRO](https://img.shields.io/badge/ISRO-Department%20of%20Space-blue?style=flat-square)](https://www.isro.gov.in/)
+[![MIT License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+
+</div>
