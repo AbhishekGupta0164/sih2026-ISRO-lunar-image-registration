@@ -58,6 +58,14 @@ export class SeleneApiService {
     this.baseUrl = url.replace(/\/$/, '');
   }
 
+  public getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  public getReportUrl(jobId: string): string {
+    return `${this.baseUrl}/api/v1/jobs/${jobId}/report.pdf`;
+  }
+
   // ── Health ────────────────────────────────────────────────────────────────
 
   public async checkHealth(): Promise<boolean> {
