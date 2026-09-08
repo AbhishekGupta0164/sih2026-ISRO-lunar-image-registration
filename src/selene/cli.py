@@ -78,6 +78,8 @@ def run_pipeline(
     if config is None:
         config = PipelineConfig()
     
+    import time
+    t_start = time.time()
     set_reproducible_seed(config.seed if hasattr(config, "seed") else 42)
 
     out_path = Path(out_dir)
@@ -339,11 +341,19 @@ def run_pipeline(
 
     # Deliverable PDF
     print("DEBUG: starting generate_pdf_report", flush=True)
+    exec_time = time.time() - t_start
     pdf_report = generate_pdf_report(
         job_dir=out_path,
         metrics=metrics,
         job_id=job_id,
         plots=[p_checker, p_quiver, p_heatmap],
+        pair=pair,
+        exec_time_s=exec_time,
+        matcher_name=matcher_name,
+        img_ref=img_ref,
+        img_src=img_src,
+        pts_ref=pts_ref_final,
+        pts_src=pts_src_final,
     )
     print("DEBUG: finished generate_pdf_report", flush=True)
 

@@ -28,3 +28,4 @@ ui/dist/
 
 # Logs
 *.log
+.matplotlib_cache/
