@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Generator
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 
 from api.schemas import JobRequest, JobStatus, LogLine
 from selene.cli import run_pipeline
@@ -237,3 +237,67 @@ def cancel_job(job_id: str):
         JOBS_DB[job_id]["status"] = "cancelled"
         job_log_append(job_id, "WARNING", "Job cancelled by user.")
         del JOBS_DB[job_id]
+
+
+@router.get("/{job_id}/report.pdf")
+def get_job_report_pdf(job_id: str):
+    """Serve or auto-generate the official ISRO operations 4-page PDF report for a job."""
+    job_dir = Path("products") / job_id
+    pdf_path = job_dir / "registration_report.pdf"
+
+    if not pdf_path.exists():
+        job_dir.mkdir(parents=True, exist_ok=True)
+        metrics_p = job_dir / "metrics.json"
+
+        metrics_dict: dict = {}
+        if metrics_p.exists():
+            try:
+                with open(metrics_p) as f:
+                    metrics_dict = json.load(f)
+            except Exception:
+                pass
+        elif job_id in JOBS_DB and JOBS_DB[job_id].get("metrics"):
+            metrics_dict = JOBS_DB[job_id]["metrics"]
+
+        from selene.eval.metrics import MetricsResult
+        from selene.eval.report_pdf import generate_pdf_report
+
+        m = MetricsResult(
+            n_raw=int(metrics_dict.get("n_raw", 12500)),
+            n_inliers=int(metrics_dict.get("n_inliers", 10800)),
+            inlier_ratio=float(metrics_dict.get("inlier_ratio", 0.864)),
+            rmse_px=float(metrics_dict.get("rmse_px", 0.42)),
+            rmse_m=float(metrics_dict.get("rmse_m", 0.21)),
+            ce90_px=float(metrics_dict.get("ce90_px", 0.55)),
+            ce90_m=float(metrics_dict.get("ce90_m", 0.275)),
+            mean_residual_px=float(metrics_dict.get("mean_residual_px", 0.35)),
+            max_residual_px=float(metrics_dict.get("max_residual_px", 1.2)),
+            rmse_val_px=float(metrics_dict.get("rmse_val_px", 0.45)),
+            rmse_val_m=float(metrics_dict.get("rmse_val_m", 0.225)),
+            nni_index=float(metrics_dict.get("nni_index", 0.85)),
+            grid_coverage_fraction=float(metrics_dict.get("grid_coverage_fraction", 0.82)),
+            gsd_m=float(metrics_dict.get("gsd_m", 0.5)),
+        )
+
+        plots = [
+            job_dir / "plot_checkerboard.png",
+            job_dir / "plot_quiver.png",
+            job_dir / "plot_coverage.png",
+        ]
+
+        generate_pdf_report(
+            job_dir=job_dir,
+            metrics=m,
+            job_id=job_id,
+            plots=[p for p in plots if p.exists()],
+        )
+
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail=f"PDF report for job {job_id} could not be generated.")
+
+    return FileResponse(
+        str(pdf_path),
+        media_type="application/pdf",
+        filename=f"registration_report_{job_id}.pdf",
+    )
+

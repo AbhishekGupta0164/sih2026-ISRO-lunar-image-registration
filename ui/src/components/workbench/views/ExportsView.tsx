@@ -345,20 +345,54 @@ Certified by SELENE-MATCH Automated Pipeline Core.
   };
 
     const handleDownload = async (productPath: string | undefined, filename: string) => {
-    // 1. If real backend file exists, ALWAYS download the real generated file from backend!
-    if (isReal && productPath) {
+    // 1. If PDF is requested, fetch official ISRO 4-page PDF from backend API
+    if (filename.endsWith('.pdf')) {
+      const reportEndpoint = jobId
+        ? `${seleneApi.getBaseUrl()}/api/v1/jobs/${jobId}/report.pdf`
+        : productPath
+        ? seleneApi.productUrl(productPath)
+        : null;
+
+      if (reportEndpoint) {
+        try {
+          addLog(`Fetching official ISRO operations PDF deliverable report from backend…`, 'info');
+          const res = await fetch(reportEndpoint);
+          if (res.ok && res.headers.get('content-type')?.includes('pdf')) {
+            const blob = await res.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = `registration_report_${jobId || 'selene'}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+            addLog(`Successfully downloaded official ISRO 4-page PDF registration report.`, 'success');
+            addToast(`ISRO PDF Report downloaded successfully.`, 'success', 'PDF Ready');
+            return;
+          }
+        } catch (err) {
+          console.warn('Backend PDF fetch note, falling back to client generator:', err);
+        }
+      }
+    }
+
+    // 2. If other real backend file exists, download from backend
+    if (isReal && productPath && !filename.endsWith('.pdf') && !filename.endsWith('.txt')) {
       const url = seleneApi.productUrl(productPath);
       const a = document.createElement('a');
       a.href = url;
       a.download = filename;
       a.target = '_blank';
+      document.body.appendChild(a);
       a.click();
-      addLog(`Downloading real deliverable product ${filename} from backend…`, 'success');
+      document.body.removeChild(a);
+      addLog(`Downloading deliverable product ${filename} from backend…`, 'success');
       addToast(`Downloading ${filename} from backend server.`, 'success', 'Download Started');
       return;
     }
 
-    // 2. Demo / Fallback PDF / TXT printable report
+    // 3. Demo / Fallback PDF / TXT printable report
     if (filename.endsWith('.pdf') || filename.endsWith('.txt')) {
       // 1. OPEN WINDOW IMMEDIATELY to bypass popup blocker!
       const printWin = window.open('', '_blank');
