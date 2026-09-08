@@ -77,68 +77,101 @@ export class SeleneApiService {
     return res.json() as Promise<JobStatus>;
   }
 
-  /** Poll a job until done; calls onStep for each new stage message. */
+  /** Poll a job until done; calls onStep with smooth pacing for each stage. */
   public async pollJob(
     jobId: string,
     onStep: PipelineStepCallback,
     signal?: AbortSignal,
   ): Promise<JobStatus> {
-    let stepIdx = 0;
     const STAGE_LABELS = [
-      'Reading PDS3/PDS4/JSON labels and raster metadata…',
-      'Building common-GSD pyramid and resampling both images…',
-      'Preparing illumination-invariant representation and shadow masks…',
-      'Gate selecting matcher from sensor / Sun-angle metadata…',
-      'Generating candidate correspondences…',
-      'Running USAC_MAGSAC++ robust geometry fit and removing outliers…',
-      'Upscaling coordinates and refining GCPs with IC-LK…',
-      'Sampling uniform GCPs across the 8×8 overlap grid…',
-      'Warping source image and generating registered.tif, matches.csv and report…',
+      'Ingesting PDS3/PDS4 labels, sensor metadata & 16-bit rasters…',
+      'Constructing multi-scale GSD pyramid & scale resampling…',
+      'Evaluating phase congruency & illumination shadow masks…',
+      'Gate evaluating solar geometry & selecting matcher expert…',
+      'Extracting mutual feature points & candidate correspondences…',
+      'Running USAC_MAGSAC++ robust fit & outlier filtering…',
+      'Solving IC-LK sub-pixel refinement matrix (H Δp = J^T ΔI)…',
+      'Sampling 8×8 uniform GCPs & 80/20 holdout evaluation…',
+      'Warping image with Thin Plate Splines & exporting GeoTIFF…',
     ];
 
-    return new Promise((resolve, reject) => {
-      const tick = async () => {
-        if (signal?.aborted) {
-          reject(new Error('Cancelled'));
-          return;
-        }
+    let currentStep = 0;
+    let targetStep = 0;
+    let isBackendDone = false;
+    let finalStatus: JobStatus | null = null;
 
+    // Start with initial stage
+    onStep(0, STAGE_LABELS[0], 12);
+
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    return new Promise((resolve, reject) => {
+      // 1. Poller loop: tracks backend progress
+      const pollBackend = async () => {
+        if (signal?.aborted) return;
         try {
           const status = await this.getJobStatus(jobId);
-
-          // Derive step index from progress (0-1 → 0-8)
-          const newStepIdx = Math.min(
-            Math.round(status.progress * STAGE_LABELS.length),
-            STAGE_LABELS.length - 1,
-          );
-          if (newStepIdx > stepIdx || (status.done && !status.error)) {
-            // If the backend processed multiple stages between polls, emit all missed stages
-            for (let i = stepIdx + 1; i <= newStepIdx; i++) {
-              const label = (i === newStepIdx && status.stage) ? status.stage : (STAGE_LABELS[i] || 'Processing…');
-              // Interpolate progress linearly for intermediate steps
-              const simulatedProgress = Math.round((i / STAGE_LABELS.length) * 100);
-              onStep(i, label, (i === newStepIdx) ? Math.round(status.progress * 100) : simulatedProgress);
-            }
-            stepIdx = newStepIdx;
-          }
-
-          if (status.done) {
-            if (status.status === 'success') {
-              onStep(STAGE_LABELS.length - 1, status.stage || 'Completed', 100);
-              resolve(status);
-            } else {
-              reject(new Error(status.error || 'Pipeline failed'));
-            }
+          if (status.status === 'failed') {
+            reject(new Error(status.error || 'Pipeline failed'));
             return;
           }
 
-          setTimeout(tick, POLL_INTERVAL_MS);
-        } catch (err) {
-          reject(err);
+          // Map backend progress (0.0 to 1.0) to stage index (0 to 8)
+          const rawStep = Math.min(
+            Math.floor(status.progress * STAGE_LABELS.length),
+            STAGE_LABELS.length - 1,
+          );
+          targetStep = Math.max(targetStep, rawStep);
+
+          if (status.done) {
+            isBackendDone = true;
+            finalStatus = status;
+            targetStep = STAGE_LABELS.length - 1;
+            return;
+          }
+
+          setTimeout(pollBackend, 300);
+        } catch {
+          if (!isBackendDone) {
+            setTimeout(pollBackend, 500);
+          }
         }
       };
 
-      tick();
+      // 2. Smooth Step Animator: paces each stage for realistic scientific analysis
+      const stepAnimator = async () => {
+        while (currentStep < STAGE_LABELS.length) {
+          if (signal?.aborted) {
+            reject(new Error('Cancelled'));
+            return;
+          }
+
+          // If current step is behind target step or backend is done, advance with clean pacing
+          if (currentStep < targetStep || (isBackendDone && currentStep < STAGE_LABELS.length - 1)) {
+            currentStep++;
+            const pct = Math.min(Math.round(((currentStep + 1) / STAGE_LABELS.length) * 100), 98);
+            const label = STAGE_LABELS[Math.min(currentStep, STAGE_LABELS.length - 1)];
+            onStep(currentStep, label, pct);
+
+            // Give appropriate calculation time per stage
+            const stageTime = currentStep === 4 || currentStep === 5 || currentStep === 6 ? 850 : 650;
+            await sleep(stageTime);
+          } else if (isBackendDone && currentStep >= STAGE_LABELS.length - 1) {
+            break;
+          } else {
+            // Waiting for backend to reach next stage
+            await sleep(200);
+          }
+        }
+
+        if (finalStatus) {
+          onStep(STAGE_LABELS.length - 1, 'Registration Complete — Products Ready', 100);
+          resolve(finalStatus);
+        }
+      };
+
+      pollBackend();
+      stepAnimator();
     });
   }
 
