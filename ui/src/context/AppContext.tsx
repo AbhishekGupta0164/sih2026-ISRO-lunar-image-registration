@@ -80,7 +80,7 @@ const defaultSettings: SettingsConfig = {
   coordinateSystem: 'Selenographic (Lat / Lon)',
   apiUrl: API_BASE_URL,
   autoSave: true,
-  theme: 'dark',
+  theme: 'light',
 };
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -110,8 +110,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isAppMode, setIsAppMode] = useState<boolean>(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [theme, setThemeState] = useState<'dark' | 'light'>(() => {
-    const saved = localStorage.getItem('selene_theme');
-    return (saved === 'light' || saved === 'dark') ? saved : 'dark';
+    const saved = localStorage.getItem('selene_theme_v2');
+    if (saved === 'dark' || saved === 'light') return saved;
+    return 'light';
   });
 
   useEffect(() => {
@@ -123,6 +124,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       root.classList.add('dark');
       root.classList.remove('light');
     }
+    localStorage.setItem('selene_theme_v2', theme);
     localStorage.setItem('selene_theme', theme);
   }, [theme]);
 
