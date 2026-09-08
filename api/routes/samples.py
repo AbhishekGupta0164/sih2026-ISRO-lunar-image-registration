@@ -38,7 +38,19 @@ def get_synthetic_pair():
     import json
     from pathlib import Path
 
-    gt_file = Path("data_generation/output/ground_truth.json")
+    synth_dir = Path("data_generation/output")
+    synth_dir.mkdir(parents=True, exist_ok=True)
+    ref_file = synth_dir / "reference.png"
+    tgt_file = synth_dir / "synthetic_target.png"
+    gt_file = synth_dir / "ground_truth.json"
+
+    if not ref_file.exists() or not tgt_file.exists() or not gt_file.exists():
+        try:
+            from data_generation.generate_synthetic_pair import create_synthetic_pair
+            create_synthetic_pair(output_dir=str(synth_dir))
+        except Exception as exc:
+            print(f"[WARN] Failed to generate synthetic pair on demand: {exc}")
+
     gt_data = {}
     if gt_file.exists():
         with open(gt_file) as f:

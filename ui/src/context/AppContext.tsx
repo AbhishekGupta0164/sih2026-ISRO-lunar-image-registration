@@ -93,7 +93,7 @@ const defaultReferenceImage: ImageMetadata = {
   sensor: 'LRO NAC',
   gsd: '0.50 m/px',
   sunAngle: '142.1° / 34.5°',
-  previewUrl: '/synthetic/reference.png',
+  previewUrl: seleneApi.productUrl('/synthetic/reference.png'),
 };
 
 const defaultSourceImage: ImageMetadata = {
@@ -103,7 +103,7 @@ const defaultSourceImage: ImageMetadata = {
   sensor: 'Chandrayaan-2 OHRC',
   gsd: '0.50 m/px',
   sunAngle: '284.3° / 32.1°',
-  previewUrl: '/synthetic/synthetic_target.png',
+  previewUrl: seleneApi.productUrl('/synthetic/synthetic_target.png'),
 };
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {

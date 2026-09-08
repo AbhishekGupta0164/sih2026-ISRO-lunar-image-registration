@@ -107,8 +107,8 @@ export const ResultsView: React.FC = () => {
     ? seleneApi.productUrl(results.registeredPngUrl || `/products/${jobId}/registered.png`)
     : null;
 
-  const refUrl = referenceImage?.previewUrl || '/synthetic/reference.png';
-  const srcUrl = sourceImage?.previewUrl     || '/synthetic/synthetic_target.png';
+  const refUrl = referenceImage?.previewUrl || seleneApi.productUrl('/synthetic/reference.png');
+  const srcUrl = sourceImage?.previewUrl     || seleneApi.productUrl('/synthetic/synthetic_target.png');
   const wipeRightUrl = registeredUrl || srcUrl;
 
   const checkerboardPlotUrl = isReal && results.checkerboardUrl

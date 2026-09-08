@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useApp } from '../../context/AppContext';
 import { Sliders, GitMerge, CheckCircle, ArrowRight } from 'lucide-react';
+import { seleneApi } from '../../services/api';
 
 export const ScrollSequenceHero: React.FC = () => {
   const { openWorkbench } = useApp();
@@ -34,7 +35,7 @@ export const ScrollSequenceHero: React.FC = () => {
           {/* Reference Image (Underneath) */}
           <div className="absolute inset-0 bg-slate-950 flex items-center justify-center">
             <img
-              src="/synthetic/reference.png"
+              src={seleneApi.productUrl('/synthetic/reference.png')}
               alt="Reference Lunar Image"
               className="w-full h-full object-cover"
             />
@@ -49,7 +50,7 @@ export const ScrollSequenceHero: React.FC = () => {
             style={{ clipPath: `polygon(0 0, ${sliderPos}% 0, ${sliderPos}% 100%, 0 100%)` }}
           >
             <img
-              src="/synthetic/synthetic_target.png"
+              src={seleneApi.productUrl('/synthetic/synthetic_target.png')}
               alt="Target Registered Lunar Image"
               className="w-full h-full object-cover"
             />

@@ -152,8 +152,8 @@ Certified by SELENE-MATCH Automated Pipeline Core.
       ctx.fillStyle = '#040910';
       ctx.fillRect(0, 0, 800, 400);
 
-      const refUrl = referenceImage?.previewUrl || '/synthetic/reference.png';
-      const srcUrl = sourceImage?.previewUrl || '/synthetic/synthetic_target.png';
+      const refUrl = referenceImage?.previewUrl || seleneApi.productUrl('/synthetic/reference.png');
+      const srcUrl = sourceImage?.previewUrl || seleneApi.productUrl('/synthetic/synthetic_target.png');
 
       const refImg = new Image();
       const srcImg = new Image();
@@ -627,7 +627,7 @@ Certified by SELENE-MATCH Automated Pipeline Core.
       downloadCanvasPlot('coverage', filename);
     } else {
       // 5. Fallback GeoTIFF mock download if not real
-      const imgUrl = sourceImage?.previewUrl || '/synthetic/synthetic_target.png';
+      const imgUrl = sourceImage?.previewUrl || seleneApi.productUrl('/synthetic/synthetic_target.png');
       fetch(imgUrl)
         .then(res => res.blob())
         .then(blob => {

@@ -150,8 +150,8 @@ const ParamRow: React.FC<{
 export const MatchesView: React.FC = () => {
   const { results, referenceImage, sourceImage, isComplete } = useApp();
 
-  const refUrl  = referenceImage?.previewUrl || '/synthetic/reference.png';
-  const srcUrl  = sourceImage?.previewUrl    || '/synthetic/synthetic_target.png';
+  const refUrl  = referenceImage?.previewUrl || seleneApi.productUrl('/synthetic/reference.png');
+  const srcUrl  = sourceImage?.previewUrl    || seleneApi.productUrl('/synthetic/synthetic_target.png');
   const raw     = isComplete ? (results.raw || 0) : 0;
   const inliers = isComplete ? (results.inliers || 0) : 0;
   const ratio   = isComplete ? (results.ratio || 0) : 0;

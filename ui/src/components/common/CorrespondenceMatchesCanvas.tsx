@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { seleneApi } from '../../services/api';
 
 export type SubpixelMethod = 'ic_lk' | 'ecc' | 'phase_fft';
 
@@ -273,8 +274,8 @@ function drawMatch(
 
 // ── Main Component ───────────────────────────────────────────────────────────
 export const CorrespondenceMatchesCanvas: React.FC<Props> = ({
-  refUrl  = '/synthetic/reference.png',
-  srcUrl  = '/synthetic/synthetic_target.png',
+  refUrl  = seleneApi.productUrl('/synthetic/reference.png'),
+  srcUrl  = seleneApi.productUrl('/synthetic/synthetic_target.png'),
   inliersCount,
   rawMatchesCount,
   matcherName,

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { seleneApi } from '../../services/api';
 
 interface HeatmapCanvasProps {
   rmse: number;
@@ -10,7 +11,7 @@ interface HeatmapCanvasProps {
 export const HeatmapCanvas: React.FC<HeatmapCanvasProps> = ({
   rmse,
   opacity = 75,
-  refUrl = '/synthetic/reference.png',
+  refUrl = seleneApi.productUrl('/synthetic/reference.png'),
   srcUrl,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);

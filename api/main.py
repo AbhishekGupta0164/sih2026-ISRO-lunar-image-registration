@@ -46,6 +46,18 @@ app.mount("/products", StaticFiles(directory=str(products_path)), name="products
 # Mount synthetic generated data output directory for UI display
 synthetic_path = Path("data_generation/output")
 synthetic_path.mkdir(parents=True, exist_ok=True)
+
+# Self-healing: ensure reference.png and synthetic_target.png exist so /synthetic endpoints never 404
+ref_img = synthetic_path / "reference.png"
+tgt_img = synthetic_path / "synthetic_target.png"
+gt_json = synthetic_path / "ground_truth.json"
+if not ref_img.exists() or not tgt_img.exists() or not gt_json.exists():
+    try:
+        from data_generation.generate_synthetic_pair import create_synthetic_pair
+        create_synthetic_pair(output_dir=str(synthetic_path))
+    except Exception as exc:
+        print(f"[WARN] Failed to auto-generate default synthetic pair on startup: {exc}")
+
 app.mount("/synthetic", StaticFiles(directory=str(synthetic_path)), name="synthetic")
 
 

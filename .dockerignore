@@ -15,5 +15,3 @@ ui/node_modules
 ui/dist
 products/*
 !products/.gitkeep
-data_generation/output/*
-!data_generation/output/.gitkeep

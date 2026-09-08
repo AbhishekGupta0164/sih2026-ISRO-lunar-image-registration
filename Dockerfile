@@ -45,8 +45,9 @@ COPY scripts/ scripts/
 # Install SELENE-MATCH python package
 RUN pip install --no-cache-dir -e .
 
-# Create output directory structures
-RUN mkdir -p products data_generation/output
+# Create output directory structures and ensure baseline synthetic demo pair exists
+RUN mkdir -p products data_generation/output && \
+    python data_generation/generate_synthetic_pair.py --output_dir data_generation/output
 
 EXPOSE 8000
 ENV PORT=8000
