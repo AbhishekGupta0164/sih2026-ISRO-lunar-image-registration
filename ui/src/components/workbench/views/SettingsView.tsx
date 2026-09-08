@@ -1,17 +1,27 @@
 import React from 'react';
 import { Sliders, Activity, Server, Save } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
+import { seleneApi } from '../../../services/api';
 
 export const SettingsView: React.FC = () => {
   const { settings, updateSettings, addLog, addToast, theme, setTheme } = useApp();
 
-  const handleTestApi = () => {
-    addLog(`API connection test requested for: ${settings.apiUrl}`, 'info');
-    addToast(
-      'API connection check completed. Workbench is ready.',
-      'success',
-      'API Check'
-    );
+  const handleTestApi = async () => {
+    addLog(`Testing API connection to: ${settings.apiUrl}…`, 'info');
+    try {
+      const isOnline = await seleneApi.checkHealth();
+      if (isOnline) {
+        addLog(`API connection successful: ${settings.apiUrl}`, 'success');
+        addToast(`API connected successfully to ${settings.apiUrl}`, 'success', 'API Connected');
+      } else {
+        addLog(`API health check failed for: ${settings.apiUrl}`, 'error');
+        addToast(`Backend reachable but health check returned non-200.`, 'error', 'API Warning');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Connection failed';
+      addLog(`API connection failed: ${msg}`, 'error');
+      addToast(`Could not connect to API at ${settings.apiUrl}`, 'error', 'API Offline');
+    }
   };
 
   return (

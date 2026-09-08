@@ -1860,11 +1860,13 @@ input[type="checkbox"] {
 /* ============ SIDEBAR ============ */
 #view-app #main-sidebar {
   width: var(--sidebar-w);
-  transition: width 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-#view-app .sidebar-collapsed {
-  width: 60px !important;
+#view-app #main-sidebar.sidebar-collapsed {
+  width: 64px !important;
+  min-width: 64px !important;
+  max-width: 64px !important;
 }
 
 #view-app .sidebar-collapsed .nav-text,
