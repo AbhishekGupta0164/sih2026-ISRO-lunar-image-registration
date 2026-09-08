@@ -48,12 +48,16 @@ def plot_checkerboard(
                     img_warped[i * sq_h : (i + 1) * sq_h, j * sq_w : (j + 1) * sq_w]
                 )
 
-    fig, ax = plt.subplots(figsize=(8, 8), dpi=150)
+    fig, ax = plt.subplots(figsize=(8, 8), dpi=150, facecolor="#030712")
     ax.imshow(checker, cmap="gray")
-    ax.set_title(f"Checkerboard Registration Overlay ({num_squares}x{num_squares})")
+    # Draw visible cyan grid partition lines
+    for k in range(1, num_squares):
+        ax.axvline(k * sq_w, color="#38bdf8", linestyle="-", linewidth=0.9, alpha=0.7)
+        ax.axhline(k * sq_h, color="#38bdf8", linestyle="-", linewidth=0.9, alpha=0.7)
+    ax.set_title(f"Checkerboard Registration Interleaving ({num_squares}×{num_squares})", color="#f8fafc", fontsize=11, fontweight="bold", pad=10)
     ax.axis("off")
     plt.tight_layout()
-    plt.savefig(str(out_path), bbox_inches="tight")
+    plt.savefig(str(out_path), bbox_inches="tight", facecolor=fig.get_facecolor(), edgecolor="none")
     plt.close(fig)
     return out_path
 
