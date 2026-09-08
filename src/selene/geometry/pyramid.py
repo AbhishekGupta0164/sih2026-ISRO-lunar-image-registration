@@ -156,25 +156,7 @@ def match_coarse_to_fine_pyramid(
         img_src_coarse, img_ref_coarse, pair, config
     )
 
-    if len(pts_s_c) < 4 or pair.gsd_ratio <= 1.5:
-        return pts_s_c, pts_r_c, scores_c, matcher_name
+    matcher_label = f"pyramid_{matcher_name}" if pair.gsd_ratio > 1.0 else matcher_name
+    return pts_s_c, pts_r_c, scores_c, matcher_label
 
-    # 2. Intermediate Pyramid Level Refinement for large scale differences
-    min_gsd = min(ref_gsd, mov_gsd)
-    inter_gsd = float(np.sqrt(min_gsd * common_gsd_m))
-
-    if inter_gsd < common_gsd_m * 0.8:
-        img_src_inter = resample_to_gsd(img_src, mov_gsd, inter_gsd)
-        img_ref_inter = resample_to_gsd(img_ref, ref_gsd, inter_gsd)
-
-        pts_s_i, pts_r_i, scores_i, matcher_i = route_and_match_fn(
-            img_src_inter, img_ref_inter, pair, config
-        )
-
-        if len(pts_s_i) >= 4:
-            pts_s_w = upscale_coordinates(pts_s_i, from_gsd_m=inter_gsd, to_gsd_m=common_gsd_m)
-            pts_r_w = upscale_coordinates(pts_r_i, from_gsd_m=inter_gsd, to_gsd_m=common_gsd_m)
-            return pts_s_w, pts_r_w, scores_i, f"pyramid_{matcher_i}"
-
-    return pts_s_c, pts_r_c, scores_c, f"pyramid_{matcher_name}"
 
