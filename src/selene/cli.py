@@ -54,10 +54,15 @@ def load_image_any(path: str | Path) -> tuple[np.ndarray, object | None, object 
             pass
 
     # Standard image format fallback via OpenCV
-    img = cv2.imread(str(p), cv2.IMREAD_GRAYSCALE)
+    # Use IMREAD_UNCHANGED to preserve 16-bit radiometric depth (REG-3 fix)
+    img = cv2.imread(str(p), cv2.IMREAD_UNCHANGED)
     if img is None:
         raise ValueError(f"Could not decode image: {p}")
-    arr = (img.astype(np.float32) - img.min()) / (img.max() - img.min() + 1e-6)
+    # Convert multi-channel to grayscale if needed
+    if img.ndim == 3:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    img_f = img.astype(np.float32)
+    arr = (img_f - img_f.min()) / (img_f.max() - img_f.min() + 1e-6)
     return arr, None, None
 
 
@@ -139,8 +144,11 @@ def run_pipeline(
 
     # ── Stage 5: Robust Fit & Shadow-Aware Uniform GCP Sampling ─────────────
     _notify(0.65, "Stage 5: MAGSAC++ robust fit & uniform GCP sampling")
-    H_fit, inlier_mask = find_homography_magsac(pts_src_nat, pts_ref_nat, threshold_px=config.magsac_threshold_m)
-    log.info(f"MAGSAC++ retained {np.sum(inlier_mask)} inliers / {len(pts_src_nat)} total")
+    # REG-5 fix: convert threshold from metres to pixels using reference GSD
+    # config.magsac_threshold_m is in metres; MAGSAC expects pixels
+    magsac_threshold_px = config.magsac_threshold_m / max(pair.ref_meta.gsd_m, 1e-6)
+    H_fit, inlier_mask = find_homography_magsac(pts_src_nat, pts_ref_nat, threshold_px=magsac_threshold_px)
+    log.info(f"MAGSAC++ retained {np.sum(inlier_mask)} inliers / {len(pts_src_nat)} total (threshold={magsac_threshold_px:.2f}px)")
 
     pts_src_in = pts_src_nat[inlier_mask]
     pts_ref_in = pts_ref_nat[inlier_mask]

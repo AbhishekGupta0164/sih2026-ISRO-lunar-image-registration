@@ -118,25 +118,45 @@ def create_synthetic_pair(
     # Step 1: Load or Generate Base Image
     if input_image_path and os.path.exists(input_image_path):
         print(f"[INFO] Loading raw OHRC image from: {input_image_path}")
-        raw_img = cv2.imread(input_image_path, cv2.IMREAD_GRAYSCALE)
+        # Use IMREAD_UNCHANGED to preserve 16-bit radiometric depth
+        raw_img = cv2.imread(input_image_path, cv2.IMREAD_UNCHANGED)
         if raw_img is None:
             raise ValueError(f"Could not load image at {input_image_path}")
+        # Convert colour → grayscale if needed
+        if raw_img.ndim == 3:
+            raw_img = cv2.cvtColor(raw_img, cv2.COLOR_BGR2GRAY)
+        # Normalize to 8-bit uint for downstream processing
+        raw_img = cv2.normalize(raw_img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
         
         h_raw, w_raw = raw_img.shape
         print(f"[INFO] Original image dimensions: {w_raw} x {h_raw}")
-        
-        # Crop narrow OHRC region if matching expected crop dimensions [300:1750, 20:252]
+
+        # GEN-1 fix: Aspect-ratio-preserving extraction — do NOT force square crop
+        # on narrow pushbroom strips which would discard >90% of the image content.
+        tw, th = target_size  # target_size = (width, height)
+
         if h_raw >= 1750 and w_raw >= 252:
+            # Known OHRC narrow strip: crop to standard region
             cropped = raw_img[300:1750, 20:252]
-            print(f"[INFO] Cropped narrow region to shape: {cropped.shape}")
+            print(f"[INFO] Cropped OHRC narrow region to shape: {cropped.shape}")
+        elif w_raw >= h_raw:
+            # Landscape or square: crop a target-aspect region from centre
+            aspect_h = int(w_raw * th / tw)
+            aspect_h = min(aspect_h, h_raw)
+            cy = h_raw // 2
+            y0 = max(0, cy - aspect_h // 2)
+            cropped = raw_img[y0:y0 + aspect_h, :]
+            print(f"[INFO] Landscape crop shape: {cropped.shape}")
         else:
-            # Fallback center crop to square
-            min_dim = min(h_raw, w_raw)
-            cy, cx = h_raw // 2, w_raw // 2
-            cropped = raw_img[max(0, cy - min_dim // 2):cy + min_dim // 2,
-                              max(0, cx - min_dim // 2):cx + min_dim // 2]
-            print(f"[INFO] Adaptive square crop shape: {cropped.shape}")
-            
+            # Portrait / tall strip: extract a horizontal band from centre
+            # Use the full width and crop a band whose height = w_raw * (th/tw)
+            band_h = int(w_raw * th / tw)
+            band_h = min(band_h, h_raw)
+            cy = h_raw // 2
+            y0 = max(0, cy - band_h // 2)
+            cropped = raw_img[y0:y0 + band_h, :]
+            print(f"[INFO] Portrait/strip band crop shape: {cropped.shape}")
+
         reference = cv2.resize(cropped, target_size, interpolation=cv2.INTER_AREA)
     else:
         if input_image_path:

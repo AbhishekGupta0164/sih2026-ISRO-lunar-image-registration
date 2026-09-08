@@ -251,6 +251,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setPipelineProgress(0);
     setActiveStepIndex(-1);
     setResults(emptyResults);
+    // UI-3 fix: revoke previous blob URL to prevent memory leaks
+    setReferenceImage((prev) => {
+      if (prev?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(prev.previewUrl);
+      return prev;
+    });
     const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : '';
     const metadata: ImageMetadata = {
       name: file.name,
@@ -284,6 +289,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       'Chandrayaan-2 TMC-2': '5.00 m/px',
       'Chandrayaan-2 IIRS': '80.00 m/px',
     };
+    // UI-3 fix: revoke previous blob URL to prevent memory leaks
+    setSourceImage((prev) => {
+      if (prev?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(prev.previewUrl);
+      return prev;
+    });
     const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : '';
     const metadata: ImageMetadata = {
       name: file.name,
@@ -458,14 +468,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const refUrl = seleneApi.productUrl(data.reference_image_url || '/synthetic/reference.png');
       const srcUrl = seleneApi.productUrl(data.source_image_url || '/synthetic/synthetic_target.png');
 
-      const [refF, srcF] = await Promise.all([
-        createFileFromUrl(refUrl, 'reference_crop.png'),
-        createFileFromUrl(srcUrl, 'matched_target.png'),
-      ]);
+      // GEN-3 fix: blob re-fetch can fail if the file isn't yet served or due to CORS.
+      // Degrade gracefully — use previewUrl for display; registration still works if
+      // the user hits "Run Registration" (it will refetch the File at that point).
+      let refF: File | undefined;
+      let srcF: File | undefined;
+      try {
+        [refF, srcF] = await Promise.all([
+          createFileFromUrl(refUrl, 'reference_crop.png'),
+          createFileFromUrl(srcUrl, 'matched_target.png'),
+        ]);
+      } catch (fetchErr) {
+        console.warn('GEN-3: Could not fetch generated blobs as File objects, preview-only mode:', fetchErr);
+      }
 
       setReferenceImage({
         name: `${referenceImage.name} (Matched Base)`,
-        size: refF.size,
+        size: refF ? refF.size : 0,
         type: 'image/png',
         sensor: referenceImage.sensor || 'Chandrayaan-2 OHRC',
         gsd: referenceImage.gsd || '0.25 m/px',
@@ -477,7 +496,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       setSourceImage({
         name: `${referenceImage.name} (Warped Target - 5.5° Rot)`,
-        size: srcF.size,
+        size: srcF ? srcF.size : 0,
         type: 'image/png',
         sensor: 'Chandrayaan-2 OHRC (Simulated Orbit Pass)',
         gsd: referenceImage.gsd || '0.25 m/px',
@@ -492,7 +511,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Generation failed';
       addLog(`Failed to generate target from reference: ${msg}`, 'error');
-      addToast('Could not generate target pair from image.', 'error', 'Generation Error');
+      // UI-2 fix: surface real error message instead of generic toast
+      addToast(`Generation error: ${msg}`, 'error', 'Generation Error');
     }
   };
 
@@ -561,7 +581,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const msg = err instanceof Error ? err.message : 'Unknown failure';
       setIsProcessing(false);
       addLog(`Pipeline error: ${msg}`, 'error');
-      addToast('Registration pipeline encountered an error.', 'error', 'Pipeline Error');
+      // UI-2 fix: surface real error message so user knows what went wrong
+      addToast(`Pipeline error: ${msg}`, 'error', 'Pipeline Error');
     }
   };
 

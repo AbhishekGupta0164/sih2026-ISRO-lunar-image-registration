@@ -31,9 +31,7 @@ def select_matcher(pair: Pair, config: PipelineConfig | None = None) -> str:
     - fallback                                          -> 'sift'
     """
     if config and config.matcher != "auto":
-        if config.matcher in ("loftr", "lightglue", "xfeat"):
-            # Deep matchers (kornia/torchvision) unconditionally segfault on this host OS.
-            # Routing to SIFT baseline to ensure pipeline stability.
+        if not getattr(config, "allow_deep_matchers", True) and config.matcher in ("loftr", "lightglue", "xfeat"):
             return "sift"
         return config.matcher
 
@@ -46,6 +44,8 @@ def select_matcher(pair: Pair, config: PipelineConfig | None = None) -> str:
         return "mutual_info"
     elif gsd_r > 3.0:
         return "phase_corr"
+    elif config is None or getattr(config, "allow_deep_matchers", True):
+        return "lightglue"
     else:
         return "sift"
 
