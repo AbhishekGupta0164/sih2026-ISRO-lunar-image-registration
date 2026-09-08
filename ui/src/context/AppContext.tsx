@@ -8,7 +8,7 @@ import {
   ToastMessage,
   SettingsConfig,
 } from '../types';
-import { seleneApi } from '../services/api';
+import { seleneApi, API_BASE_URL } from '../services/api';
 
 /**
  * AppContext — Core state management for SELENE Lunar Image Registration Workbench
@@ -78,7 +78,7 @@ const defaultSettings: SettingsConfig = {
   defaultMatcher: 'Automatic gate routing',
   heatmapOpacity: 70,
   coordinateSystem: 'Selenographic (Lat / Lon)',
-  apiUrl: 'http://localhost:8000/api/v1',
+  apiUrl: API_BASE_URL,
   autoSave: true,
   theme: 'dark',
 };
