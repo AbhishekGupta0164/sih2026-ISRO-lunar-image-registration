@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { Footer } from './Footer';
+import { ImageRequiredModal } from '../common/ImageRequiredModal';
 
 import { DashboardView } from './views/DashboardView';
 import { UploadView } from './views/UploadView';
@@ -16,7 +17,7 @@ import { SettingsView } from './views/SettingsView';
 import { AboutView } from './views/AboutView';
 
 export const WorkbenchLayout: React.FC = () => {
-  const { currentView } = useApp();
+  const { currentView, missingImagesModal, setMissingImagesModal } = useApp();
   const mainScrollRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -63,6 +64,10 @@ export const WorkbenchLayout: React.FC = () => {
         </div>
         <Footer />
       </main>
+      <ImageRequiredModal
+        state={missingImagesModal}
+        onClose={() => setMissingImagesModal(null)}
+      />
     </div>
   );
 };
