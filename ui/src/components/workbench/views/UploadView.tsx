@@ -78,7 +78,26 @@ export const UploadView: React.FC = () => {
         </button>
       </div>
 
-      {/* OVERLAP / MISMATCH ALERT BANNER */}
+      {/* EMPTY STATE GUIDANCE BANNER */}
+      {!referenceImage && !sourceImage && (
+        <div className="p-4 rounded-xl bg-sky-500/10 border border-sky-500/30 text-sky-900 dark:text-sky-200 text-xs flex items-center justify-between flex-wrap gap-4 shadow-sm">
+          <div className="space-y-1 max-w-2xl">
+            <div className="font-bold flex items-center gap-1.5 text-sky-600 dark:text-sky-400">
+              <span className="text-base">💡</span> Image Pair Ingestion Guide
+            </div>
+            <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+              Upload your <strong>Reference image</strong> and <strong>Target image</strong> below, or click <strong>Load Demo Synthetic Pair</strong> to test with pre-loaded Chandrayaan-2 / LRO NAC datasets. If you only upload 1 image as Reference, click <strong>Generate Target from Reference</strong> to create a matching synthetic pair.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={loadSyntheticPair}
+            className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs transition-all shadow-md"
+          >
+            Load Demo Synthetic Pair
+          </button>
+        </div>
+      )}
       {Boolean(referenceImage?.file && !referenceImage?.name?.startsWith('reference.png') && (sourceImage?.name?.includes('synthetic_target.png') || !sourceImage?.file)) && (
         <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between flex-wrap gap-4 shadow-sm">
           <div className="space-y-1 max-w-2xl">
@@ -344,7 +363,33 @@ export const UploadView: React.FC = () => {
 
         <button
           type="button"
-          onClick={() => navigateTo('register')}
+          onClick={() => {
+            if (!referenceImage && !sourceImage) {
+              addToast(
+                'Please upload both Reference and Target images first (or click "Load Demo Synthetic Pair") to continue.',
+                'error',
+                'Images Required'
+              );
+              return;
+            }
+            if (referenceImage && !sourceImage) {
+              addToast(
+                'Please upload a Target image or click "Generate Target from Reference" before continuing.',
+                'error',
+                'Target Missing'
+              );
+              return;
+            }
+            if (!referenceImage && sourceImage) {
+              addToast(
+                'Please upload a Reference image to pair with your Target image.',
+                'error',
+                'Reference Missing'
+              );
+              return;
+            }
+            navigateTo('register');
+          }}
           className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs transition-all shadow-lg shadow-sky-600/25 border border-sky-400/30"
         >
           Continue to Registration

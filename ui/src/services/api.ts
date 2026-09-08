@@ -98,6 +98,7 @@ export class SeleneApiService {
     let currentStep = 0;
     let targetStep = 0;
     let isBackendDone = false;
+    let isFailed = false;
     let finalStatus: JobStatus | null = null;
 
     // Start with initial stage
@@ -108,10 +109,11 @@ export class SeleneApiService {
     return new Promise((resolve, reject) => {
       // 1. Poller loop: tracks backend progress
       const pollBackend = async () => {
-        if (signal?.aborted) return;
+        if (signal?.aborted || isFailed) return;
         try {
           const status = await this.getJobStatus(jobId);
           if (status.status === 'failed') {
+            isFailed = true;
             reject(new Error(status.error || 'Pipeline failed'));
             return;
           }
@@ -131,8 +133,8 @@ export class SeleneApiService {
           }
 
           setTimeout(pollBackend, 300);
-        } catch {
-          if (!isBackendDone) {
+        } catch (err) {
+          if (!isBackendDone && !isFailed) {
             setTimeout(pollBackend, 500);
           }
         }
@@ -141,8 +143,8 @@ export class SeleneApiService {
       // 2. Smooth Step Animator: paces each stage for realistic scientific analysis
       const stepAnimator = async () => {
         while (currentStep < STAGE_LABELS.length) {
-          if (signal?.aborted) {
-            reject(new Error('Cancelled'));
+          if (signal?.aborted || isFailed) {
+            if (!isFailed) reject(new Error('Cancelled'));
             return;
           }
 
@@ -164,7 +166,7 @@ export class SeleneApiService {
           }
         }
 
-        if (finalStatus) {
+        if (finalStatus && !isFailed) {
           onStep(STAGE_LABELS.length - 1, 'Registration Complete — Products Ready', 100);
           resolve(finalStatus);
         }
