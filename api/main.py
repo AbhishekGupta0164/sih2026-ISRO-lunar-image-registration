@@ -3,7 +3,17 @@
 Owner: P4
 Run: uvicorn api.main:app --reload --port 8000
 """
+import sys
 from pathlib import Path
+
+# Ensure 'src' and project root are in Python's search path
+ROOT_DIR = Path(__file__).resolve().parent.parent
+SRC_DIR = ROOT_DIR / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
