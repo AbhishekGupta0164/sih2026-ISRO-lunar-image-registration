@@ -359,10 +359,13 @@ export const CorrespondenceMatchesCanvas: React.FC<Props> = ({
 
           const imgA = imgsRef.current?.a;
           const imgB = imgsRef.current?.b;
-          const wA = imgA?.naturalWidth || 1024;
-          const hA = imgA?.naturalHeight || 1024;
-          const wB = imgB?.naturalWidth || 1024;
-          const hB = imgB?.naturalHeight || 1024;
+          // UI-4 fix: naturalWidth/Height are only valid AFTER the image has loaded.
+          // The `loaded` dep on this useEffect guarantees we only run this block
+          // once both images have fired their onload callbacks.
+          const wA = (imgA?.complete && imgA.naturalWidth > 0) ? imgA.naturalWidth : 1024;
+          const hA = (imgA?.complete && imgA.naturalHeight > 0) ? imgA.naturalHeight : 1024;
+          const wB = (imgB?.complete && imgB.naturalWidth > 0) ? imgB.naturalWidth : 1024;
+          const hB = (imgB?.complete && imgB.naturalHeight > 0) ? imgB.naturalHeight : 1024;
 
           const parsedCorrs: Correspondence[] = [];
           for (let i = 0; i < dataLines.length && parsedCorrs.length < maxDisplay; i += step) {
