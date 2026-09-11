@@ -1,112 +1,93 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { Cpu, Zap, GitMerge, Sliders, CheckCircle2 } from 'lucide-react';
 
 export const TechnologySection: React.FC = () => {
   return (
-    <motion.section
-      id="technology"
-      initial={{ opacity: 0, y: 50 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '-100px' }}
-      transition={{ duration: 0.8, ease: [0.2, 0.6, 0.2, 1] }}
-    >
-      <div className="section-head">
-        <div>
-          <div className="kicker">03 / TECHNOLOGY</div>
-          <h2>
-            A specialist
-            <br />
-            <span className="thin">for every problem.</span>
-          </h2>
-        </div>
-        <p>
-          Instead of forcing one algorithm onto every lunar image pair,
-          SELENE-MATCH uses a gated strategy that selects the most suitable
-          technique from the scene conditions.
-        </p>
-      </div>
-
+    <section id="technology" className="py-8 px-6 max-w-7xl mx-auto">
       <motion.div
-        className="gate"
-        initial={{ opacity: 0, scale: 0.97 }}
-        whileInView={{ opacity: 1, scale: 1 }}
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
-        transition={{ duration: 0.6, delay: 0.15 }}
+        transition={{ duration: 0.5 }}
+        className="text-center max-w-3xl mx-auto mb-8"
       >
-        <div className="gate-head">
-          <b>MATCHER GATE / AUTO ROUTING</b>
-          <span>LIVE SELECTION LOGIC</span>
-        </div>
-        <div className="gate-flow">
-          <div className="gate-node">SCENE METADATA</div>
-          <div className="gate-link" />
-          <div className="gate-node">SENSOR + SUN ANGLE</div>
-          <div className="gate-link" />
-          <div className="gate-node core">GATE</div>
-          <div className="gate-link" />
-          <div className="gate-specs">
-            <div className="gate-node hot">LIGHTGLUE ●</div>
-            <div className="gate-node">SIFT</div>
-            <div className="gate-node">CRATER GRAPH</div>
-            <div className="gate-node">PHASE CORR</div>
-            <div className="gate-node">MUTUAL INFO</div>
-          </div>
-        </div>
+        <span className="text-xs font-bold uppercase tracking-widest text-sky-600 dark:text-sky-400">
+          03 / Algorithm Architecture
+        </span>
+        <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-2">
+          Adaptive Multi-Modal Matching Engine
+        </h2>
+        <p className="text-slate-600 dark:text-slate-300 text-base mt-4 leading-relaxed font-normal">
+          Instead of relying on a single algorithm, SELENE dynamically routes lunar image pairs to the optimal feature extractor based on solar elevation, sensor modality, and resolution gap.
+        </p>
       </motion.div>
 
-      <div className="explain">
-        <motion.div
-          className="panel bracket"
-          initial={{ opacity: 0, x: -20 }}
-          whileInView={{ opacity: 1, x: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-        >
-          <h3>
-            Computer Vision Core<em>CORE</em>
-          </h3>
-          <p>
-            Illumination preparation, feature extraction, correspondence,
-            robust geometry and sub-pixel refinement work together as one
-            registration pipeline.
-          </p>
-          <div style={{ marginTop: '20px' }}>
-            <span className="tag">OPENCV</span>
-            <span className="tag">RASTERIO</span>
-            <span className="tag">GDAL</span>
-            <span className="tag">NUMPY</span>
-            <span className="tag">PYTORCH</span>
-            <span className="tag">KORNIA</span>
-            <span className="tag">MAGSAC++</span>
-            <span className="tag">IC-LK</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Card 1: Traditional CV Feature Matchers */}
+        <div className="p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 backdrop-blur-md hover:border-sky-500/40 transition-all shadow-xl">
+          <div className="w-12 h-12 rounded-xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-600 dark:text-sky-400 mb-6">
+            <Cpu className="w-6 h-6" />
           </div>
-        </motion.div>
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white">Traditional Feature Extraction</h3>
+          <p className="text-sm text-slate-600 dark:text-slate-300 mt-2 leading-relaxed font-medium">
+            High-speed scale-invariant feature transform (SIFT) and oriented FAST & rotated BRIEF (ORB) extractors for fast keypoint detection under uniform illumination.
+          </p>
 
-        <motion.div
-          className="panel bracket"
-          initial={{ opacity: 0, x: 20 }}
-          whileInView={{ opacity: 1, x: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6, delay: 0.3 }}
-        >
-          <h3>
-            Matcher Ensemble<em>ENSEMBLE</em>
-          </h3>
-          <p>
-            LightGlue, SIFT, Phase Correlation, Mutual Information, Dense
-            Matching and the Crater Graph strategy can be routed according
-            to sensor modality and illumination conditions.
-          </p>
-          <div style={{ marginTop: '20px' }}>
-            <span className="tag">LIGHTGLUE</span>
-            <span className="tag">SIFT</span>
-            <span className="tag">CRATER GRAPH</span>
-            <span className="tag">PHASE CORR</span>
-            <span className="tag">MUTUAL INFO</span>
-            <span className="tag">RoMa</span>
+          <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-800 space-y-3 font-mono text-xs">
+            <div className="flex items-center justify-between text-slate-800 dark:text-slate-200">
+              <span className="flex items-center gap-2 font-semibold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> SIFT Keypoints
+              </span>
+              <span className="text-slate-500 dark:text-slate-400">128D Descriptor</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-800 dark:text-slate-200">
+              <span className="flex items-center gap-2 font-semibold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> ORB Binary Matcher
+              </span>
+              <span className="text-slate-500 dark:text-slate-400">Fast Hamming Distance</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-800 dark:text-slate-200">
+              <span className="flex items-center gap-2 font-semibold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Phase Correlation
+              </span>
+              <span className="text-slate-500 dark:text-slate-400">FFT Frequency Shift</span>
+            </div>
           </div>
-        </motion.div>
+        </div>
+
+        {/* Card 2: Deep Learning Neural Matchers */}
+        <div className="p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 backdrop-blur-md hover:border-purple-500/40 transition-all shadow-xl">
+          <div className="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-600 dark:text-purple-400 mb-6">
+            <Zap className="w-6 h-6" />
+          </div>
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white">Deep Learning Neural Matchers</h3>
+          <p className="text-sm text-slate-600 dark:text-slate-300 mt-2 leading-relaxed font-medium">
+            Transformer-based semi-dense models (LOFTR, SuperPoint + LightGlue) capable of matching extreme shadow shifts, crater rim distortion, and low-contrast surface terrain.
+          </p>
+
+          <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-800 space-y-3 font-mono text-xs">
+            <div className="flex items-center justify-between text-slate-800 dark:text-slate-200">
+              <span className="flex items-center gap-2 font-semibold">
+                <CheckCircle2 className="w-4 h-4 text-purple-600 dark:text-purple-400" /> LOFTR Detector-Free
+              </span>
+              <span className="text-slate-500 dark:text-slate-400">Coarse-to-Fine Transformer</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-800 dark:text-slate-200">
+              <span className="flex items-center gap-2 font-semibold">
+                <CheckCircle2 className="w-4 h-4 text-purple-600 dark:text-purple-400" /> SuperPoint + LightGlue
+              </span>
+              <span className="text-slate-500 dark:text-slate-400">Graph Neural Network</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-800 dark:text-slate-200">
+              <span className="flex items-center gap-2 font-semibold">
+                <CheckCircle2 className="w-4 h-4 text-purple-600 dark:text-purple-400" /> MAGSAC++ Filtering
+              </span>
+              <span className="text-slate-500 dark:text-slate-400">Marginalized Sample Consensus</span>
+            </div>
+          </div>
+        </div>
       </div>
-    </motion.section>
+    </section>
   );
 };

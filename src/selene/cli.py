@@ -8,6 +8,7 @@ Wires Stage 0 -> Stage 8 in order.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 import argparse
 import datetime
 import json
@@ -53,10 +54,15 @@ def load_image_any(path: str | Path) -> tuple[np.ndarray, object | None, object 
             pass
 
     # Standard image format fallback via OpenCV
-    img = cv2.imread(str(p), cv2.IMREAD_GRAYSCALE)
+    # Use IMREAD_UNCHANGED to preserve 16-bit radiometric depth (REG-3 fix)
+    img = cv2.imread(str(p), cv2.IMREAD_UNCHANGED)
     if img is None:
         raise ValueError(f"Could not decode image: {p}")
-    arr = (img.astype(np.float32) - img.min()) / (img.max() - img.min() + 1e-6)
+    # Convert multi-channel to grayscale if needed
+    if img.ndim == 3:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    img_f = img.astype(np.float32)
+    arr = (img_f - img_f.min()) / (img_f.max() - img_f.min() + 1e-6)
     return arr, None, None
 
 
@@ -72,6 +78,8 @@ def run_pipeline(
     if config is None:
         config = PipelineConfig()
     
+    import time
+    t_start = time.time()
     set_reproducible_seed(config.seed if hasattr(config, "seed") else 42)
 
     out_path = Path(out_dir)
@@ -91,7 +99,8 @@ def run_pipeline(
     log.info(f"Source: {src_path} | Reference: {ref_path}")
 
     # ── Stage 1: Ingest & Geometry ────────────────────────────────────────────
-    _notify(0.12, "Stage 1: Ingesting metadata & reading rasters")
+    _notify(0.12, "Stage 1: Ingesting PDS labels, sensor telemetry & reading 16-bit rasters")
+    time.sleep(0.3)
     pair = Pair.from_paths(ref=ref_path, mov=src_path)
     img_src, crs_src, trans_src = load_image_any(src_path)
     img_ref, crs_ref, trans_ref = load_image_any(ref_path)
@@ -103,20 +112,24 @@ def run_pipeline(
     log.info(f"Stage 1 Ingest: src_shape={img_src.shape}, ref_shape={img_ref.shape}, Δaz={pair.delta_sun_az:.1f}°, gsd_ratio={pair.gsd_ratio:.2f}")
 
     # ── Stage 2: GSD Pyramid Scale Equalization ──────────────────────────────
-    _notify(0.25, "Stage 2: Building GSD pyramid & resampling")
+    _notify(0.25, "Stage 2: Constructing multi-scale Gaussian pyramids & resampling to uniform GSD")
+    time.sleep(0.3)
     common_gsd_m = max(pair.ref_meta.gsd_m, pair.mov_meta.gsd_m)
     img_src_work = resample_to_gsd(img_src, pair.mov_meta.gsd_m, common_gsd_m)
     img_ref_work = resample_to_gsd(img_ref, pair.ref_meta.gsd_m, common_gsd_m)
-    log.info(f"GSD Pyramid: resampled to common GSD={common_gsd_m:.2f}m | src_work={img_src_work.shape}, ref_work={img_ref_work.shape}")
+    log.info(f"Stage 2 GSD Pyramid: resampled to common GSD={common_gsd_m:.2f}m | src_work={img_src_work.shape}, ref_work={img_ref_work.shape}")
 
     # ── Stage 2b: Illumination Shadow Masking ───────────────────────────────
-    _notify(0.35, "Stage 3: Illumination shadow masking")
+    _notify(0.35, "Stage 3: Illumination shadow masking & Wallis adaptive filtering")
+    time.sleep(0.3)
     shadow_mask_src = detect_shadows(img_src_work)
     shadow_mask_ref = detect_shadows(img_ref_work)
-    log.info(f"Shadow Mask: computed exclusion zones (src_shadow_pixels={np.count_nonzero(shadow_mask_src)})")
+    shadow_pct = (np.count_nonzero(shadow_mask_src) / max(shadow_mask_src.size, 1)) * 100.0
+    log.info(f"Stage 3 Shadow Mask: computed exclusion zones ({np.count_nonzero(shadow_mask_src)} shadow px, {shadow_pct:.1f}% area)")
 
     # ── Stage 3/4: Matching Ensemble & Gate (Multi-Scale Pyramid) ───────────────
-    _notify(0.50, "Stage 4: Feature matching & correspondence generation")
+    _notify(0.50, "Stage 4: Feature matching & mutual correspondence extraction")
+    time.sleep(0.4)
     pts_src_w, pts_ref_w, scores, matcher_name = match_coarse_to_fine_pyramid(
         img_src=img_src,
         img_ref=img_ref,
@@ -124,19 +137,26 @@ def run_pipeline(
         config=config,
         route_and_match_fn=route_and_match,
     )
-    log.info(f"Matcher [{matcher_name}] found {len(pts_src_w)} candidate correspondences")
+    log.info(f"Stage 4 Matcher [{matcher_name}]: extracted {len(pts_src_w)} candidate feature correspondences")
 
     if len(pts_src_w) < 4:
-        raise RuntimeError(f"Insufficient match candidates found by matcher ({len(pts_src_w)} points)")
+        raise RuntimeError(
+            f"Insufficient match candidates found by matcher ({len(pts_src_w)} points, minimum 4 required). "
+            "Please ensure both Reference and Source images depict the same overlapping lunar surface area with shared craters."
+        )
 
     # Map match coordinates from working GSD space back to native pixel space
     pts_src_nat = upscale_coordinates(pts_src_w, from_gsd_m=common_gsd_m, to_gsd_m=pair.mov_meta.gsd_m)
     pts_ref_nat = upscale_coordinates(pts_ref_w, from_gsd_m=common_gsd_m, to_gsd_m=pair.ref_meta.gsd_m)
 
     # ── Stage 5: Robust Fit & Shadow-Aware Uniform GCP Sampling ─────────────
-    _notify(0.65, "Stage 5: MAGSAC++ robust fit & uniform GCP sampling")
-    H_fit, inlier_mask = find_homography_magsac(pts_src_nat, pts_ref_nat, threshold_px=config.magsac_threshold_m)
-    log.info(f"MAGSAC++ retained {np.sum(inlier_mask)} inliers / {len(pts_src_nat)} total")
+    _notify(0.65, "Stage 5: USAC_MAGSAC++ robust geometry fitting & outlier filtering")
+    time.sleep(0.4)
+    # REG-5 fix: convert threshold from metres to pixels using reference GSD
+    magsac_threshold_px = config.magsac_threshold_m / max(pair.ref_meta.gsd_m, 1e-6)
+    H_fit, inlier_mask = find_homography_magsac(pts_src_nat, pts_ref_nat, threshold_px=magsac_threshold_px)
+    inlier_ratio_pct = (np.sum(inlier_mask) / max(len(pts_src_nat), 1)) * 100.0
+    log.info(f"Stage 5 MAGSAC++: retained {np.sum(inlier_mask)} inliers / {len(pts_src_nat)} candidates ({inlier_ratio_pct:.1f}% consensus, threshold={magsac_threshold_px:.2f}px)")
 
     pts_src_in = pts_src_nat[inlier_mask]
     pts_ref_in = pts_ref_nat[inlier_mask]
@@ -152,10 +172,11 @@ def run_pipeline(
         min_dist_px=config.min_gcp_spacing_px,
         shadow_mask=shadow_mask_src,
     )
-    log.info(f"Uniform sampler selected {len(pts_src_gcp)} well-distributed GCPs")
+    log.info(f"Stage 5 Uniform Sampler: selected {len(pts_src_gcp)} well-distributed GCPs across 8x8 grid")
 
     # ── Stage 7: Sub-Pixel Refinement ─────────────────────────────────────────
-    _notify(0.78, "Stage 7: Sub-pixel IC-LK refinement")
+    _notify(0.78, "Stage 7: Sub-pixel IC-LK Lucas-Kanade 21x21 refinement")
+    time.sleep(0.4)
     pts_src_refined, valid_lk = refine_subpixel_lk(
         img_ref=img_ref,
         img_mov=img_src,
@@ -287,6 +308,30 @@ def run_pipeline(
     metrics_dict["mean_confidence"] = float(np.mean(confidence)) if len(confidence) > 0 else 0.0
     metrics_dict["pct_gcp_confidence_ge_0.6"] = float(np.mean(confidence >= 0.6)) if len(confidence) > 0 else 0.0
 
+    if H_fit is not None and getattr(H_fit, "shape", None) == (3, 3):
+        a, b, tx = float(H_fit[0, 0]), float(H_fit[0, 1]), float(H_fit[0, 2])
+        c, d, ty = float(H_fit[1, 0]), float(H_fit[1, 1]), float(H_fit[1, 2])
+        scale_x = float(np.sqrt(a**2 + c**2))
+        scale_y = float(np.sqrt(b**2 + d**2))
+        rot_deg = float(np.degrees(np.arctan2(c, a)))
+        metrics_dict["recovered_transform"] = {
+            "rotation_deg": round(rot_deg, 2),
+            "scale": round((scale_x + scale_y) / 2.0, 3),
+            "tx_px": round(tx, 1),
+            "ty_px": round(ty, 1),
+        }
+
+    if H_gt is not None:
+        try:
+            metrics_dict["ground_truth_transform"] = {
+                "rotation_deg": float(gt_data.get("rotation_deg", 0.0)),
+                "scale": float(gt_data.get("scale", 1.0)),
+                "tx_px": float(gt_data.get("tx", 0.0)),
+                "ty_px": float(gt_data.get("ty", 0.0)),
+            }
+        except Exception:
+            pass
+
     metrics_json = out_path / "metrics.json"
     with open(metrics_json, "w") as f:
         json.dump(metrics_dict, f, indent=2)
@@ -303,11 +348,19 @@ def run_pipeline(
 
     # Deliverable PDF
     print("DEBUG: starting generate_pdf_report", flush=True)
+    exec_time = time.time() - t_start
     pdf_report = generate_pdf_report(
         job_dir=out_path,
         metrics=metrics,
         job_id=job_id,
         plots=[p_checker, p_quiver, p_heatmap],
+        pair=pair,
+        exec_time_s=exec_time,
+        matcher_name=matcher_name,
+        img_ref=img_ref,
+        img_src=img_src,
+        pts_ref=pts_ref_final,
+        pts_src=pts_src_final,
     )
     print("DEBUG: finished generate_pdf_report", flush=True)
 
@@ -318,7 +371,7 @@ def run_pipeline(
         "status": "success",
         "registered_geotiff": str(registered_tif),
         "matches_csv": str(matches_csv),
-        "metrics": metrics.to_dict(),
+        "metrics": metrics_dict,
         "pdf_report": str(pdf_report),
         "residual_heatmap": str(p_residual),
     }

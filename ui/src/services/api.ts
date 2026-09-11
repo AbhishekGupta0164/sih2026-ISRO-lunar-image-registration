@@ -1,12 +1,14 @@
 /**
  * SeleneApiService
  *
- * All calls target http://localhost:8000/api/v1 by default.
- * The base URL can be overridden from the Settings view.
+ * Defaults to http://localhost:8000/api/v1 for local development.
+ * Override by setting the VITE_API_URL environment variable or using
+ * the Settings view to point at a deployed backend (e.g. Render).
  */
 import { MatcherType, RegistrationResults } from '../types';
 
-export const API_BASE_URL = 'http://localhost:8000/api/v1';
+// UI-1 fix: fall back to localhost:8000 so local dev works out-of-the-box
+export const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000/api/v1';
 
 export interface PipelineStepCallback {
   (stepIndex: number, message: string, percent: number): void;
@@ -22,11 +24,13 @@ export interface JobStatus {
   metrics?: Record<string, number | string | boolean | null>;
   error?: string;
   registered_geotiff_url?: string;
+  registered_png_url?: string;
   matches_csv_url?: string;
   report_pdf_url?: string;
   checkerboard_url?: string;
   quiver_url?: string;
   coverage_url?: string;
+  residual_heatmap_url?: string;
 }
 
 /** Shape returned by POST /api/v1/register/async */
@@ -54,6 +58,14 @@ export class SeleneApiService {
     this.baseUrl = url.replace(/\/$/, '');
   }
 
+  public getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  public getReportUrl(jobId: string): string {
+    return `${this.baseUrl}/api/v1/jobs/${jobId}/report.pdf`;
+  }
+
   // ── Health ────────────────────────────────────────────────────────────────
 
   public async checkHealth(): Promise<boolean> {
@@ -73,64 +85,103 @@ export class SeleneApiService {
     return res.json() as Promise<JobStatus>;
   }
 
-  /** Poll a job until done; calls onStep for each new stage message. */
+  /** Poll a job until done; calls onStep with smooth pacing for each stage. */
   public async pollJob(
     jobId: string,
     onStep: PipelineStepCallback,
     signal?: AbortSignal,
   ): Promise<JobStatus> {
-    let stepIdx = 0;
     const STAGE_LABELS = [
-      'Reading PDS3/PDS4/JSON labels and raster metadata…',
-      'Building common-GSD pyramid and resampling both images…',
-      'Preparing illumination-invariant representation and shadow masks…',
-      'Gate selecting matcher from sensor / Sun-angle metadata…',
-      'Generating candidate correspondences…',
-      'Running USAC_MAGSAC++ robust geometry fit and removing outliers…',
-      'Upscaling coordinates and refining GCPs with IC-LK…',
-      'Sampling uniform GCPs across the 8×8 overlap grid…',
-      'Warping source image and generating registered.tif, matches.csv and report…',
+      'Ingesting PDS3/PDS4 labels, sensor metadata & 16-bit rasters…',
+      'Constructing multi-scale GSD pyramid & scale resampling…',
+      'Evaluating phase congruency & illumination shadow masks…',
+      'Gate evaluating solar geometry & selecting matcher expert…',
+      'Extracting mutual feature points & candidate correspondences…',
+      'Running USAC_MAGSAC++ robust fit & outlier filtering…',
+      'Solving IC-LK sub-pixel refinement matrix (H Δp = J^T ΔI)…',
+      'Sampling 8×8 uniform GCPs & 80/20 holdout evaluation…',
+      'Warping image with Thin Plate Splines & exporting GeoTIFF…',
     ];
 
-    return new Promise((resolve, reject) => {
-      const tick = async () => {
-        if (signal?.aborted) {
-          reject(new Error('Cancelled'));
-          return;
-        }
+    let currentStep = 0;
+    let targetStep = 0;
+    let isBackendDone = false;
+    let isFailed = false;
+    let finalStatus: JobStatus | null = null;
 
+    // Start with initial stage
+    onStep(0, STAGE_LABELS[0], 12);
+
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    return new Promise((resolve, reject) => {
+      // 1. Poller loop: tracks backend progress
+      const pollBackend = async () => {
+        if (signal?.aborted || isFailed) return;
         try {
           const status = await this.getJobStatus(jobId);
-
-          // Derive step index from progress (0-1 → 0-8)
-          const newStepIdx = Math.min(
-            Math.round(status.progress * STAGE_LABELS.length),
-            STAGE_LABELS.length - 1,
-          );
-          if (newStepIdx > stepIdx || (status.done && !status.error)) {
-            // If the backend processed multiple stages between polls, emit all missed stages
-            for (let i = stepIdx + 1; i <= newStepIdx; i++) {
-              const label = (i === newStepIdx && status.stage) ? status.stage : (STAGE_LABELS[i] || 'Processing…');
-              // Interpolate progress linearly for intermediate steps
-              const simulatedProgress = Math.round((i / STAGE_LABELS.length) * 100);
-              onStep(i, label, (i === newStepIdx) ? Math.round(status.progress * 100) : simulatedProgress);
-            }
-            stepIdx = newStepIdx;
-          }
-
-          if (status.done) {
-            if (status.status === 'success') resolve(status);
-            else reject(new Error(status.error || 'Pipeline failed'));
+          if (status.status === 'failed') {
+            isFailed = true;
+            reject(new Error(status.error || 'Pipeline failed'));
             return;
           }
 
-          setTimeout(tick, POLL_INTERVAL_MS);
+          // Map backend progress (0.0 to 1.0) to stage index (0 to 8)
+          const rawStep = Math.min(
+            Math.floor(status.progress * STAGE_LABELS.length),
+            STAGE_LABELS.length - 1,
+          );
+          targetStep = Math.max(targetStep, rawStep);
+
+          if (status.done) {
+            isBackendDone = true;
+            finalStatus = status;
+            targetStep = STAGE_LABELS.length - 1;
+            return;
+          }
+
+          setTimeout(pollBackend, 300);
         } catch (err) {
-          reject(err);
+          if (!isBackendDone && !isFailed) {
+            setTimeout(pollBackend, 500);
+          }
         }
       };
 
-      tick();
+      // 2. Smooth Step Animator: paces each stage for realistic scientific analysis
+      const stepAnimator = async () => {
+        while (currentStep < STAGE_LABELS.length) {
+          if (signal?.aborted || isFailed) {
+            if (!isFailed) reject(new Error('Cancelled'));
+            return;
+          }
+
+          // If current step is behind target step or backend is done, advance with clean pacing
+          if (currentStep < targetStep || (isBackendDone && currentStep < STAGE_LABELS.length - 1)) {
+            currentStep++;
+            const pct = Math.min(Math.round(((currentStep + 1) / STAGE_LABELS.length) * 100), 98);
+            const label = STAGE_LABELS[Math.min(currentStep, STAGE_LABELS.length - 1)];
+            onStep(currentStep, label, pct);
+
+            // Give appropriate calculation time per stage
+            const stageTime = currentStep === 4 || currentStep === 5 || currentStep === 6 ? 850 : 650;
+            await sleep(stageTime);
+          } else if (isBackendDone && currentStep >= STAGE_LABELS.length - 1) {
+            break;
+          } else {
+            // Waiting for backend to reach next stage
+            await sleep(200);
+          }
+        }
+
+        if (finalStatus && !isFailed) {
+          onStep(STAGE_LABELS.length - 1, 'Registration Complete — Products Ready', 100);
+          resolve(finalStatus);
+        }
+      };
+
+      pollBackend();
+      stepAnimator();
     });
   }
 
@@ -207,44 +258,21 @@ export class SeleneApiService {
         method:   `${this.getMatcherLabel(resolvedMatcher)} + IC-LK ECC Sub-Pixel`,
         matcherUsed: resolvedMatcher,
         jobId,
+        registeredGeotiffUrl: status.registered_geotiff_url,
+        registeredPngUrl: status.registered_png_url,
+        matchesCsvUrl: status.matches_csv_url,
+        reportPdfUrl: status.report_pdf_url,
+        checkerboardUrl: status.checkerboard_url,
+        quiverUrl: status.quiver_url,
+        coverageUrl: status.coverage_url,
         residualHeatmapUrl: status.residual_heatmap_url,
+        recoveredTransform: m.recovered_transform as any,
+        groundTruthTransform: m.ground_truth_transform as any,
       };
       return { results, jobId };
     }
 
-    // ── Demo / simulation fallback (no files uploaded) ────────────────────
-    const resolvedMatcher = this.resolveMatcher(matcher, sensor);
-    const jobId = `demo_${Date.now()}`;
-    const steps = [
-      { msg: 'Reading PDS3/PDS4/JSON labels and raster metadata…',            delay: 650 },
-      { msg: 'Building common-GSD pyramid and resampling both images…',        delay: 700 },
-      { msg: 'Preparing illumination-invariant representation and shadow masks…', delay: 800 },
-      { msg: `Gate selected ${this.getMatcherLabel(resolvedMatcher)} from sensor / Sun-angle metadata.`, delay: 650 },
-      { msg: 'Generating candidate correspondences…',                          delay: 900 },
-      { msg: 'Running USAC_MAGSAC++ robust geometry fit and removing outliers…', delay: 850 },
-      { msg: 'Upscaling coordinates and refining GCPs with IC-LK ECC sub-pixel…', delay: 800 },
-      { msg: 'Evaluating independent 80/20 train/validation GCP holdout RMSE…', delay: 650 },
-      { msg: 'Sampling uniform GCPs across the 8×8 overlap grid…',            delay: 650 },
-      { msg: 'Warping source and generating registered.tif, matches.csv and report…', delay: 700 },
-    ];
-
-    const startTime = performance.now();
-    for (let i = 0; i < steps.length; i++) {
-      if (signal?.aborted) throw new Error('Cancelled');
-      onStep(i, steps[i].msg, Math.round(((i + 1) / steps.length) * 100));
-      await new Promise((resolve) => setTimeout(resolve, steps[i].delay));
-    }
-
-    const duration = ((performance.now() - startTime) / 1000).toFixed(2);
-    const results: RegistrationResults = {
-      rmse: 0.68, rmseVal: 0.72, qualityGatePass: true,
-      raw: 21389, inliers: 18742, ratio: 87.6,
-      ce90: 0.91, nni: 0.84, coverage: 81, time: duration,
-      method: `${this.getMatcherLabel(resolvedMatcher)} + IC-LK ECC Sub-Pixel`,
-      matcherUsed: resolvedMatcher,
-      jobId,
-    };
-    return { results, jobId };
+    throw new Error('Both Reference and Source image files must be provided to run the real registration pipeline.');
   }
 
   // ── Data Generation ───────────────────────────────────────────────────────

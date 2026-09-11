@@ -1,19 +1,14 @@
-# Chandrayaan-2-optical-images-registration-
-
-
 # SELENE-MATCH
 
-**Multi-modal, Sun-Angle and Scale-Invariant Lunar Image Correspondence**
-Smart India Hackathon 2026 · PS 26166 · ISRO / Department of Space · Software · Space Technology
+**Multi-modal, Sun-Angle and Scale-Invariant Lunar Image Correspondence**  
+*Smart India Hackathon 2026 · PS 26166 · ISRO / Department of Space · Space Technology*
 
 SELENE-MATCH finds sub-pixel, uniformly-distributed correspondence between Chandrayaan-2 optical
 images (**OHRC**, **TMC-2**, **IIRS**) and a lunar reference image (**LRO NAC / WAC**), across large
 differences in sun angle, viewpoint and scale (up to ~320×). It outputs a registered raster, a match-point
-file, and evaluation metrics (RMSE, inlier count, inlier ratio, uniformity/coverage score) — not just a
-pretty overlay.
+file, and evaluation metrics (RMSE, inlier count, inlier ratio, coverage score).
 
-Everything in this stack is **free and open-source**. No paid API keys, no paid cloud tier, and no paid
-software are required to build, run, or demo this project.
+> **UI Redesign Update**: The frontend workbench has been completely redesigned with a clean, high-contrast scientific UI aesthetic inspired by ISRO/NASA workbench standards. See [`UI_REDESIGN.md`](UI_REDESIGN.md) for full details.
 
 ---
 

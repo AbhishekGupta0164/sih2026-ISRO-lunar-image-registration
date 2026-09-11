@@ -25,6 +25,7 @@ class JobStatus(BaseModel):
     error: Optional[str] = None
     # Product URLs populated after completion
     registered_geotiff_url: Optional[str] = None
+    registered_png_url: Optional[str] = None
     matches_csv_url: Optional[str] = None
     report_pdf_url: Optional[str] = None
     checkerboard_url: Optional[str] = None
@@ -38,6 +39,7 @@ class RegisterResponse(BaseModel):
     status: str
     metrics: Dict[str, Any]
     registered_geotiff_url: str
+    registered_png_url: Optional[str] = None
     matches_csv_url: str
     report_pdf_url: str
     checkerboard_url: str

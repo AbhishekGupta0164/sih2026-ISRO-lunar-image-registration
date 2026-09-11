@@ -26,33 +26,29 @@ const StatCard: React.FC<{
   value: React.ReactNode;
   sub: string;
   icon: React.ElementType;
-  color: 'cyan' | 'emerald' | 'blue' | 'slate';
+  color: 'sky' | 'emerald' | 'amber' | 'slate';
 }> = ({ label, value, sub, icon: Icon, color }) => {
   const colorMap = {
-    cyan:    { bg: 'bg-cyan-500/8',    border: 'border-cyan-400/20',    text: 'text-cyan-400',    glow: 'shadow-[0_0_14px_rgba(111,246,255,0.12)]' },
-    emerald: { bg: 'bg-emerald-500/8', border: 'border-emerald-400/20', text: 'text-emerald-400', glow: 'shadow-[0_0_14px_rgba(62,230,160,0.12)]' },
-    blue:    { bg: 'bg-blue-500/8',    border: 'border-blue-400/20',    text: 'text-blue-400',    glow: 'shadow-[0_0_14px_rgba(57,168,255,0.12)]' },
-    slate:   { bg: 'bg-slate-500/8',   border: 'border-slate-400/20',   text: 'text-slate-400',   glow: '' },
+    sky:     { bg: 'bg-sky-500/10',     border: 'border-sky-500/20',     text: 'text-sky-400' },
+    emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400' },
+    amber:   { bg: 'bg-amber-500/10',   border: 'border-amber-500/20',   text: 'text-amber-400' },
+    slate:   { bg: 'bg-slate-500/10',   border: 'border-slate-500/20',   text: 'text-slate-400' },
   };
   const c = colorMap[color];
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl border border-[rgba(146,196,255,0.1)] bg-gradient-to-b from-[rgba(12,24,40,0.7)] to-[rgba(6,13,22,0.8)] backdrop-blur-md p-5 flex items-start justify-between gap-3 group hover:border-[rgba(146,196,255,0.22)] transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,0,0,0.3)]`}>
-      {/* Top-left accent line */}
-      <div className={`absolute top-0 left-4 right-4 h-[1px] bg-gradient-to-r from-transparent via-[rgba(146,196,255,0.2)] to-transparent`} />
-
-      <div className="flex flex-col min-w-0">
-        <span className={`font-mono text-[9px] font-bold tracking-[0.2em] ${c.text} uppercase flex items-center gap-1.5 mb-3`}>
-          <span className={`w-1 h-1 rounded-full ${c.text.replace('text-', 'bg-')}`} />
+    <div className="p-5 rounded-xl border border-slate-800 bg-slate-900/60 backdrop-blur-sm flex items-start justify-between gap-4">
+      <div>
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">
           {label}
         </span>
-        <div className="text-white font-bold font-display text-[15px] leading-snug truncate">
+        <div className="text-xl font-bold text-white mt-1">
           {value}
         </div>
-        <p className="text-[10.5px] text-slate-500 font-mono mt-1.5 tracking-wide">{sub}</p>
+        <p className="text-xs text-slate-500 mt-1 font-mono">{sub}</p>
       </div>
 
-      <div className={`p-3 rounded-xl ${c.bg} border ${c.border} ${c.text} shrink-0 ${c.glow} transition-all duration-300 group-hover:scale-105`}>
+      <div className={`p-2.5 rounded-lg ${c.bg} border ${c.border} ${c.text} shrink-0`}>
         <Icon className="w-5 h-5" />
       </div>
     </div>
@@ -99,159 +95,158 @@ export const DashboardView: React.FC = () => {
   const { navigateTo, isProcessing, isComplete, results } = useApp();
 
   return (
-    <section id="view-dashboard" className="view-section active space-y-5">
+    <section id="view-dashboard" className="view-section active space-y-6">
 
-      {/* ── PAGE HEADER ── */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
+      {/* PAGE HEADER */}
+      <div className="pb-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-4">
         <div>
-          <div className="font-mono text-[9px] text-cyan-500/70 tracking-[0.24em] uppercase mb-1.5 flex items-center gap-2">
-            <span className="w-4 h-[1px] bg-cyan-500/50" />
-            SIH 2026 · PROBLEM ID 26166
-          </div>
-          <h1 className="text-[22px] font-bold font-display text-white tracking-tight leading-none">
-            SELENE-MATCH
-            <span className="text-[13px] font-mono text-slate-500 ml-2 tracking-wider">Workbench</span>
+          <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">
+            System Overview &amp; Status
           </h1>
-          <p className="text-[11px] text-slate-500 font-mono tracking-wide mt-1.5 max-w-xl">
-            Multi-modal, sun-angle & scale invariant image registration for Chandrayaan-2 optical imagery.
+          <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+            Smart India Hackathon 2026 · Problem Statement 26166 · ISRO
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 font-mono text-[9px] tracking-[0.14em] font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-500/20 px-3 py-1.5 rounded-full shadow-[0_0_12px_rgba(62,230,160,0.08)]">
-            <CheckCircle className="w-3 h-3" />
-            ALL SYSTEMS NOMINAL
-          </span>
-          <span className="inline-flex items-center gap-1.5 font-mono text-[9px] tracking-[0.14em] text-cyan-400 bg-cyan-950/30 border border-cyan-500/15 px-3 py-1.5 rounded-full">
-            <Zap className="w-3 h-3" />
-            OHRC · TMC-2 · IIRS
-          </span>
+          <button
+            onClick={() => navigateTo('upload')}
+            className="px-4 py-2 text-xs font-semibold rounded-lg bg-sky-600 hover:bg-sky-500 text-white transition-all shadow-md shadow-sky-600/20 border border-sky-400/30"
+          >
+            Upload Image Pair
+          </button>
+          <button
+            onClick={() => navigateTo('register')}
+            className="px-4 py-2 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all shadow-sm"
+          >
+            Configure Registration
+          </button>
         </div>
       </div>
 
-      {/* ── STAT CARDS ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard
-          label="INPUT SENSORS"
-          value="OHRC / TMC-2 / IIRS"
-          sub="vs LRO NAC / WAC"
-          icon={Layers}
-          color="blue"
-        />
-        <StatCard
-          label="SCALE RANGE"
-          value={<span className="text-cyan-300">320<span className="text-[18px]">×</span></span>}
-          sub="GSD disparity handled"
-          icon={Maximize2}
-          color="cyan"
-        />
-        <StatCard
-          label="ACCURACY TARGET"
-          value={<span className="text-emerald-300">{'< 1 px'}</span>}
-          sub="Sub-pixel refinement"
-          icon={Target}
-          color="emerald"
-        />
-        <StatCard
-          label="PIPELINE"
-          value={isProcessing ? 'Running…' : isComplete ? 'Complete' : 'Idle'}
-          sub={isProcessing ? 'Processing S0–S8' : isComplete ? results.method : 'Awaiting image pair'}
-          icon={Clock}
-          color="slate"
-        />
-      </div>
-
-      {/* ── MAIN PANELS ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-
-        {/* HOW IT WORKS — 3/5 */}
-        <div className="lg:col-span-3 rounded-2xl border border-[rgba(146,196,255,0.1)] bg-gradient-to-b from-[rgba(12,24,40,0.65)] to-[rgba(6,13,22,0.75)] backdrop-blur-md overflow-hidden">
-          <div className="px-6 pt-5 pb-4 border-b border-[rgba(146,196,255,0.08)]">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-[12px] font-bold font-display text-white tracking-[0.1em] uppercase">
-                  How SELENE-MATCH Works
-                </h3>
-                <p className="font-mono text-[9.5px] text-slate-500 mt-0.5">
-                  4-stage registration pipeline with gate-routed expert matchers
-                </p>
-              </div>
-              <Shield className="w-5 h-5 text-cyan-500/40" />
-            </div>
-          </div>
-
-          <div className="p-6">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 relative">
-              <StepCard n="01" title="Ingest"    desc="Read image + metadata sidecar"  icon={UploadCloud}       />
-              <StepCard n="02" title="Equalize"  desc="Common GSD pyramid resampling"  icon={SlidersHorizontal} />
-              <StepCard n="03" title="Match"     desc="Gate selects expert matcher"     icon={Share2}            />
-              <StepCard n="04" title="Register"  desc="MAGSAC++ + IC-LK sub-pixel"     icon={CheckCircle2} last />
-            </div>
-          </div>
-
-          <div className="px-6 pb-5 flex flex-wrap gap-3 border-t border-[rgba(146,196,255,0.07)] pt-4">
-            <button
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[11.5px] font-bold font-display tracking-[0.12em] bg-gradient-to-r from-[#1d64ec] to-[#00b4d8] text-white hover:opacity-90 hover:scale-[1.02] transition-all cursor-pointer shadow-[0_0_20px_rgba(29,100,236,0.30)] uppercase border border-cyan-400/30"
-              onClick={() => navigateTo('upload')}
-            >
-              <Upload className="w-3.5 h-3.5" />
-              Start with Upload
-            </button>
-            <button
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[11.5px] font-bold font-display tracking-[0.12em] border border-[rgba(146,196,255,0.18)] text-slate-300 hover:text-white hover:border-cyan-400/40 hover:bg-cyan-500/8 transition-all cursor-pointer uppercase"
-              onClick={() => navigateTo('register')}
-            >
-              Open Registration
-              <ExternalLink className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* CHALLENGE → SOLUTION — 2/5 */}
-        <div className="lg:col-span-2 rounded-2xl border border-[rgba(146,196,255,0.1)] bg-gradient-to-b from-[rgba(12,24,40,0.65)] to-[rgba(6,13,22,0.75)] backdrop-blur-md overflow-hidden">
-          <div className="px-5 pt-5 pb-4 border-b border-[rgba(146,196,255,0.08)] flex items-center justify-between">
-            <div>
-              <h3 className="text-[12px] font-bold font-display text-white tracking-[0.1em] uppercase">
-                Challenge → Solution
-              </h3>
-              <p className="font-mono text-[9.5px] text-slate-500 mt-0.5">Per SIH 2026 PS-26166</p>
-            </div>
-            <ArrowRight className="w-4 h-4 text-slate-600" />
-          </div>
-
-          <div className="p-4 space-y-2.5">
-            <ChallengeRow icon={Sun}      label="ILLUMINATION" desc="Phase congruency, shadow masks, relighting, crater graph." />
-            <ChallengeRow icon={Scale}    label="SCALE"        desc="Common m/px GSD pyramid; 320× disparity handled." />
-            <ChallengeRow icon={Compass}  label="VIEWPOINT"    desc="Robust affine/homography + TPS piecewise geometry." />
-            <ChallengeRow icon={KeyRound} label="SUB-PIXEL"    desc="Native-resolution IC-LK sub-pixel refinement." />
-          </div>
+      {/* SYSTEM INFORMATION TABLE */}
+      <div className="p-6 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-4 shadow-xl transition-colors">
+        <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+          System Information
+        </h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold uppercase font-mono">
+                <th className="py-3 px-4 w-1/3">Parameter</th>
+                <th className="py-3 px-4">Value</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-slate-800 dark:text-slate-200">
+              <tr>
+                <td className="py-3 px-4 font-semibold text-slate-700 dark:text-slate-300">Supported Sensors</td>
+                <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">Chandrayaan-2 OHRC (0.25m GSD), TMC-2 (5m GSD), IIRS (80m GSD)</td>
+              </tr>
+              <tr>
+                <td className="py-3 px-4 font-semibold text-slate-700 dark:text-slate-300">Reference Dataset</td>
+                <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">LRO NAC (~0.5m GSD) / LRO WAC (~100m GSD)</td>
+              </tr>
+              <tr>
+                <td className="py-3 px-4 font-semibold text-slate-700 dark:text-slate-300">Scale Disparity Range</td>
+                <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">Up to 320× GSD Mismatch Handled</td>
+              </tr>
+              <tr>
+                <td className="py-3 px-4 font-semibold text-slate-700 dark:text-slate-300">Target Accuracy</td>
+                <td className="py-3 px-4 font-bold text-emerald-600 dark:text-emerald-400">&lt; 0.5 px RMSE (Sub-pixel Accurate)</td>
+              </tr>
+              <tr>
+                <td className="py-3 px-4 font-semibold text-slate-700 dark:text-slate-300">Current Pipeline Status</td>
+                <td className="py-3 px-4">
+                  {isProcessing ? (
+                    <span className="inline-block px-2.5 py-1 rounded text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                      Processing Pipeline...
+                    </span>
+                  ) : isComplete ? (
+                    <span className="inline-block px-2.5 py-1 rounded text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                      Registration Complete ({results.method})
+                    </span>
+                  ) : (
+                    <span className="inline-block px-2.5 py-1 rounded text-xs font-semibold bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800">
+                      Ready (Awaiting Image Pair)
+                    </span>
+                  )}
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* ── QUICK METRICS (only when complete) ── */}
+      {/* CORE CAPABILITIES & WORKFLOW */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* WORKFLOW */}
+        <div className="p-6 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-4 shadow-xl transition-colors">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider pb-3 border-b border-slate-200 dark:border-slate-800">
+            Processing Workflow
+          </h2>
+          <ol className="space-y-2.5 text-xs text-slate-700 dark:text-slate-200 list-decimal list-inside font-medium leading-relaxed">
+            <li><strong className="text-sky-600 dark:text-sky-400">Image Ingestion:</strong> Load Reference &amp; Target PDS3/PDS4/GeoTIFF rasters</li>
+            <li><strong className="text-sky-600 dark:text-sky-400">Pyramid Equalization:</strong> Common meter/pixel GSD resampling</li>
+            <li><strong className="text-sky-600 dark:text-sky-400">Feature Matching:</strong> Gate router selects SIFT, ORB, SuperPoint or LOFTR</li>
+            <li><strong className="text-sky-600 dark:text-sky-400">Geometric Warping:</strong> MAGSAC++ outlier filter &amp; Thin Plate Splines</li>
+            <li><strong className="text-sky-600 dark:text-sky-400">Sub-pixel Refinement:</strong> IC-LK optical flow optimization</li>
+            <li><strong className="text-sky-600 dark:text-sky-400">Export Deliverables:</strong> Warped GeoTIFF, GCP CSV &amp; PDF Report</li>
+          </ol>
+        </div>
+
+        {/* CORE CAPABILITIES */}
+        <div className="p-6 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-4 shadow-xl transition-colors">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider pb-3 border-b border-slate-200 dark:border-slate-800">
+            Core Capabilities
+          </h2>
+          <ul className="space-y-3 text-xs text-slate-600 dark:text-slate-300">
+            <li className="pb-2.5 border-b border-slate-100 dark:border-slate-800/60">
+              <strong className="text-slate-900 dark:text-white block mb-0.5">Illumination Invariance:</strong>
+              Handles severe solar elevation/azimuth disparity across lunar phase angles.
+            </li>
+            <li className="pb-2.5 border-b border-slate-100 dark:border-slate-800/60">
+              <strong className="text-slate-900 dark:text-white block mb-0.5">Scale Invariance:</strong>
+              Aligns optical datasets captured at 0.25m (OHRC) to 80m (IIRS) GSD.
+            </li>
+            <li>
+              <strong className="text-slate-900 dark:text-white block mb-0.5">Piecewise Alignment:</strong>
+              Non-rigid Thin Plate Splines correct localized crater rim topography shifts.
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      {/* REGISTRATION METRICS TABLE (When complete) */}
       {isComplete && (
-        <div className="rounded-2xl border border-[rgba(62,230,160,0.15)] bg-gradient-to-r from-[rgba(6,24,16,0.5)] to-[rgba(4,14,10,0.5)] backdrop-blur-md px-6 py-4">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(62,230,160,0.9)]" />
-            <span className="font-mono text-[9px] text-emerald-500 tracking-[0.2em] uppercase font-bold">
-              Latest Registration Results
-            </span>
-            <span className="ml-2 font-mono text-[9px] text-slate-500">— via {results.method}</span>
+        <div className="p-6 rounded-2xl bg-white dark:bg-slate-900/90 border border-emerald-500/40 space-y-4 shadow-xl transition-colors">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+            <h2 className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+              Latest Registration Metrics ({results.method})
+            </h2>
+            <span className="text-xs font-mono text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-950 px-2.5 py-1 rounded border border-slate-200 dark:border-slate-800">Job ID: {results.jobId}</span>
           </div>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-            {[
-              { label: 'RMSE',      value: `${results.rmse} px`,  color: 'text-cyan-300' },
-              { label: 'RAW MATCHES', value: results.raw?.toLocaleString() ?? '—', color: 'text-white' },
-              { label: 'INLIERS',   value: results.inliers?.toLocaleString() ?? '—', color: 'text-emerald-300' },
-              { label: 'RATIO',     value: `${results.ratio}%`,   color: 'text-emerald-300' },
-              { label: 'CE90',      value: `${results.ce90} px`,  color: 'text-white' },
-              { label: 'TIME',      value: `${results.time}s`,    color: 'text-amber-300' },
-            ].map(({ label, value, color }) => (
-              <div key={label} className="text-center">
-                <div className={`font-display font-bold text-[17px] ${color} tabular-nums`}>{value}</div>
-                <div className="font-mono text-[8.5px] text-slate-600 mt-0.5 tracking-wider">{label}</div>
-              </div>
-            ))}
-          </div>
+
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-mono">
+                <th className="py-2.5 px-3">RMSE</th>
+                <th className="py-2.5 px-3">Raw Matches</th>
+                <th className="py-2.5 px-3">Inliers</th>
+                <th className="py-2.5 px-3">Inlier Ratio</th>
+                <th className="py-2.5 px-3">CE90 Error</th>
+                <th className="py-2.5 px-3">Runtime</th>
+              </tr>
+            </thead>
+            <tbody className="font-mono text-slate-800 dark:text-slate-200">
+              <tr>
+                <td className="py-2.5 px-3 font-bold text-emerald-600 dark:text-emerald-400">{results.rmse} px</td>
+                <td className="py-2.5 px-3">{results.raw}</td>
+                <td className="py-2.5 px-3 font-bold text-sky-600 dark:text-sky-400">{results.inliers}</td>
+                <td className="py-2.5 px-3">{results.ratio}%</td>
+                <td className="py-2.5 px-3">{results.ce90} px</td>
+                <td className="py-2.5 px-3">{results.time}s</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       )}
 

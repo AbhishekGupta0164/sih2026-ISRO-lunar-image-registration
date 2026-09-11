@@ -1,4 +1,4 @@
-h# Python
+# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -28,3 +28,4 @@ ui/dist/
 
 # Logs
 *.log
+.matplotlib_cache/

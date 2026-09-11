@@ -152,8 +152,8 @@ Certified by SELENE-MATCH Automated Pipeline Core.
       ctx.fillStyle = '#040910';
       ctx.fillRect(0, 0, 800, 400);
 
-      const refUrl = referenceImage?.previewUrl || '/synthetic/reference.png';
-      const srcUrl = sourceImage?.previewUrl || '/synthetic/synthetic_target.png';
+      const refUrl = referenceImage?.previewUrl || seleneApi.productUrl('/synthetic/reference.png');
+      const srcUrl = sourceImage?.previewUrl || seleneApi.productUrl('/synthetic/synthetic_target.png');
 
       const refImg = new Image();
       const srcImg = new Image();
@@ -345,7 +345,54 @@ Certified by SELENE-MATCH Automated Pipeline Core.
   };
 
     const handleDownload = async (productPath: string | undefined, filename: string) => {
-    // 1. PDF / TXT: ALWAYS use the beautiful frontend HTML printable report
+    // 1. If PDF is requested, fetch official ISRO 4-page PDF from backend API
+    if (filename.endsWith('.pdf')) {
+      const reportEndpoint = jobId
+        ? `${seleneApi.getBaseUrl()}/api/v1/jobs/${jobId}/report.pdf`
+        : productPath
+        ? seleneApi.productUrl(productPath)
+        : null;
+
+      if (reportEndpoint) {
+        try {
+          addLog(`Fetching official ISRO operations PDF deliverable report from backend…`, 'info');
+          const res = await fetch(reportEndpoint);
+          if (res.ok && res.headers.get('content-type')?.includes('pdf')) {
+            const blob = await res.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = `registration_report_${jobId || 'selene'}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+            addLog(`Successfully downloaded official ISRO 4-page PDF registration report.`, 'success');
+            addToast(`ISRO PDF Report downloaded successfully.`, 'success', 'PDF Ready');
+            return;
+          }
+        } catch (err) {
+          console.warn('Backend PDF fetch note, falling back to client generator:', err);
+        }
+      }
+    }
+
+    // 2. If other real backend file exists, download from backend
+    if (isReal && productPath && !filename.endsWith('.pdf') && !filename.endsWith('.txt')) {
+      const url = seleneApi.productUrl(productPath);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      addLog(`Downloading deliverable product ${filename} from backend…`, 'success');
+      addToast(`Downloading ${filename} from backend server.`, 'success', 'Download Started');
+      return;
+    }
+
+    // 3. Demo / Fallback PDF / TXT printable report
     if (filename.endsWith('.pdf') || filename.endsWith('.txt')) {
       // 1. OPEN WINDOW IMMEDIATELY to bypass popup blocker!
       const printWin = window.open('', '_blank');
@@ -614,7 +661,7 @@ Certified by SELENE-MATCH Automated Pipeline Core.
       downloadCanvasPlot('coverage', filename);
     } else {
       // 5. Fallback GeoTIFF mock download if not real
-      const imgUrl = sourceImage?.previewUrl || '/synthetic/synthetic_target.png';
+      const imgUrl = sourceImage?.previewUrl || seleneApi.productUrl('/synthetic/synthetic_target.png');
       fetch(imgUrl)
         .then(res => res.blob())
         .then(blob => {
@@ -698,15 +745,11 @@ Certified by SELENE-MATCH Automated Pipeline Core.
 
   if (!isComplete) {
     return (
-      <section id="view-exports" className="view-section active flex flex-col items-center justify-center min-h-[500px] text-center space-y-5">
-        <Activity className="w-16 h-16 text-cyan-400/50 mx-auto animate-pulse" />
-        <h2 className="text-2xl font-bold font-display text-white tracking-wide">Processing Pipeline Active</h2>
-        <p className="text-slate-400 text-[13px] max-w-md mx-auto leading-relaxed">
-          The final PDF report and deliverable products (GeoTIFF, CSV matrix) will only be generated and available for download <b>after</b> the registration job has successfully completed.
+      <section id="view-exports" className="view-section active flex flex-col items-center justify-center min-h-[400px] text-center space-y-4">
+        <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">Registration Pipeline Pending</h2>
+        <p className="text-slate-600 dark:text-slate-300 text-xs max-w-md mx-auto leading-relaxed font-normal">
+          The final registered GeoTIFF rasters, CSV correspondence matrices, and PDF reports will be available for download once the pipeline run completes.
         </p>
-        <span className="badge font-mono text-[10.5px] tracking-[0.14em] font-semibold text-amber-400 bg-amber-950/40 border border-amber-500/30 px-3 py-1 rounded-md mt-4">
-          AWAITING EXECUTION COMPLETION
-        </span>
       </section>
     );
   }
@@ -714,62 +757,31 @@ Certified by SELENE-MATCH Automated Pipeline Core.
   return (
     <section id="view-exports" className="view-section active space-y-6">
       {/* PAGE HEADER */}
-      <div className="flex items-center gap-3 flex-wrap pb-1">
-        <h1 className="text-2xl font-bold font-display text-white tracking-wide">
-          Exports
+      <div className="pb-4 border-b border-slate-200 dark:border-slate-800">
+        <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">
+          Export Products &amp; Deliverables
         </h1>
-        {isReal ? (
-          <span className="badge font-mono text-[10.5px] tracking-[0.14em] font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-3 py-1 rounded-md">
-            LIVE · JOB {jobId}
-          </span>
-        ) : (
-          <span className="badge font-mono text-[10.5px] tracking-[0.14em] font-semibold text-cyan-300 bg-cyan-950/40 border border-cyan-500/30 px-3 py-1 rounded-md">
-            EXPORT PACKAGE READY
-          </span>
-        )}
-        <div className="screen-subtitle w-full text-[12.5px] text-slate-400 font-mono tracking-wide mt-1">
-          Download the tangible products generated by the SELENE-MATCH registration pipeline.
-        </div>
+        <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+          Download GeoTIFF rasters, CSV correspondence matrices, and printable registration reports.
+        </p>
       </div>
 
       {/* EXPORTS CARDS GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {exports.map((exp) => (
-          <div key={exp.filename} className="card bracket p-6 sm:p-7 rounded-xl bg-slate-950/60 border border-[rgba(146,196,255,0.14)] backdrop-blur-md flex flex-col justify-between group hover:border-[rgba(146,196,255,0.3)] transition-all">
+          <div key={exp.filename} className="p-6 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex flex-col justify-between space-y-4 shadow-xl hover:border-sky-500/40 transition-all">
             <div>
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center mb-5 border shadow-lg"
-                style={{ borderColor: exp.borderColor, background: exp.bgColor }}
-              >
-                {exp.icon}
-              </div>
-              <h3 className="text-white font-mono text-[14px] font-bold tracking-wide">{exp.filename}</h3>
-              <p className="text-[11.5px] text-slate-400 font-mono mt-2 leading-relaxed">{exp.description}</p>
+              <h3 className="text-slate-900 dark:text-white font-mono text-sm font-bold">{exp.filename}</h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-2 leading-relaxed font-medium">{exp.description}</p>
             </div>
             <button
               onClick={() => handleDownload(exp.productPath, exp.filename)}
-              className="px-5 py-3.5 mt-6 rounded-xl text-[11.5px] font-bold font-display tracking-[0.14em] bg-gradient-to-r from-[#1d64ec] to-[#00b4d8] text-white flex items-center justify-center gap-2.5 hover:opacity-95 hover:scale-[1.02] transition-all cursor-pointer shadow-[0_0_20px_rgba(29,100,236,0.35)] uppercase border border-cyan-400/40"
+              className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white flex items-center justify-center gap-2 transition-all shadow-md shadow-sky-600/20 border border-sky-400/30"
             >
-              {exp.label} <Download className="w-4 h-4 text-white" />
+              {exp.label}
             </button>
           </div>
         ))}
-      </div>
-
-      {/* RUN PACKAGE TERMINAL PANEL */}
-      <div className="card p-6 sm:p-7 rounded-xl bg-slate-950/60 border border-[rgba(146,196,255,0.14)] backdrop-blur-md">
-        <h3 className="text-[14px] font-bold font-display text-white tracking-wide uppercase">
-          RUN PACKAGE STRUCTURE
-        </h3>
-        <div className="term mt-4 p-5 rounded-xl border border-[rgba(146,196,255,0.14)] bg-[#040910] font-mono text-[11.5px] text-slate-300 leading-relaxed space-y-1">
-          <div className="text-cyan-400 font-bold mb-2">products/{isReal ? jobId : 'job_xxxxxxxx'}/</div>
-          <div className="text-slate-400">├── registered.tif</div>
-          <div className="text-slate-400">├── matches.csv</div>
-          <div className="text-slate-400">├── plot_checkerboard.png</div>
-          <div className="text-slate-400">├── plot_quiver.png</div>
-          <div className="text-slate-400">├── plot_coverage.png</div>
-          <div className="text-slate-400">└── registration_report.pdf</div>
-        </div>
       </div>
     </section>
   );

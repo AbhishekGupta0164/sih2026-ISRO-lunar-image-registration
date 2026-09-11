@@ -83,12 +83,16 @@ async def generate_pair(
         if tmp_dir is not None:
             tmp_dir.cleanup()
 
-    # Build sidecar JSON URLs — the /synthetic static mount exposes SYNTH_DIR
+    # GEN-2 fix: append timestamp to bust browser cache — static filenames are
+    # always reference.png / synthetic_target.png so without this the browser
+    # serves the previous generation's images.
+    import time
+    ts = int(time.time() * 1000)
     return JSONResponse({
         "status": "success",
-        "reference_image_url":  "/synthetic/reference.png",
-        "source_image_url":     "/synthetic/synthetic_target.png",
-        "ground_truth_url":     "/synthetic/ground_truth.json",
+        "reference_image_url":  f"/synthetic/reference.png?t={ts}",
+        "source_image_url":     f"/synthetic/synthetic_target.png?t={ts}",
+        "ground_truth_url":     f"/synthetic/ground_truth.json?t={ts}",
         "reference_name":       "reference.png",
         "source_name":          "synthetic_target.png",
         "ground_truth":         gt_data,

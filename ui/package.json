@@ -1,7 +1,8 @@
 {
   "name": "selene-match-ui",
   "private": true,
-  "version": "0.1.0",
+  "version": "2.0.0",
+  "description": "Clean modern UI workbench for Chandrayaan-2 lunar image registration",
   "type": "module",
   "scripts": {
     "dev": "vite",

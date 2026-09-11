@@ -27,12 +27,31 @@ from api.routes.jobs import JOBS_DB, init_job, run_job_bg, job_log_append
 router = APIRouter()
 
 
+import re
+
+def _clean_filename(raw_name: str | None, prefix: str) -> str:
+    if not raw_name:
+        return f"{prefix}.png"
+    base = Path(raw_name).name
+    # Strip invalid filesystem characters and path separators
+    cleaned = re.sub(r'[\\/:*?"<>|\s()°]+', '_', base).strip('_.')
+    suffix = Path(cleaned).suffix or ".png"
+    stem = Path(cleaned).stem[:50]
+    return f"{prefix}_{stem}{suffix}"
+
+
 def _save_uploads(job_dir: Path, ref_image: UploadFile, mov_image: UploadFile) -> tuple[Path, Path]:
     """Persist uploaded files to the job directory and return their paths."""
     job_dir.mkdir(parents=True, exist_ok=True)
 
-    ref_save = job_dir / f"input_ref_{ref_image.filename}"
-    mov_save = job_dir / f"input_mov_{mov_image.filename}"
+    ref_filename = _clean_filename(ref_image.filename, "input_ref")
+    mov_filename = _clean_filename(mov_image.filename, "input_mov")
+
+    ref_save = job_dir / ref_filename
+    mov_save = job_dir / mov_filename
+
+    ref_save.parent.mkdir(parents=True, exist_ok=True)
+    mov_save.parent.mkdir(parents=True, exist_ok=True)
 
     with open(ref_save, "wb") as f:
         shutil.copyfileobj(ref_image.file, f)
@@ -40,6 +59,7 @@ def _save_uploads(job_dir: Path, ref_image: UploadFile, mov_image: UploadFile) -
         shutil.copyfileobj(mov_image.file, f)
 
     return ref_save, mov_save
+
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +90,12 @@ async def register_sync(
     cfg_kwargs: dict = {}
     if config_json:
         import json
-        cfg_kwargs = json.loads(config_json)
+        try:
+            parsed = json.loads(config_json)
+            if isinstance(parsed, dict):
+                cfg_kwargs = parsed
+        except Exception:
+            cfg_kwargs = {}
     cfg = PipelineConfig(**cfg_kwargs)
 
     res = run_pipeline(
@@ -85,6 +110,7 @@ async def register_sync(
         "status": "success",
         "metrics": res["metrics"],
         "registered_geotiff_url": f"/products/{job_id}/registered.tif",
+        "registered_png_url":     f"/products/{job_id}/registered.png",
         "matches_csv_url":        f"/products/{job_id}/matches.csv",
         "report_pdf_url":         f"/products/{job_id}/registration_report.pdf",
         "checkerboard_url":       f"/products/{job_id}/plot_checkerboard.png",
@@ -122,7 +148,12 @@ async def register_async(
     cfg_kwargs: dict = {}
     if config_json:
         import json
-        cfg_kwargs = json.loads(config_json)
+        try:
+            parsed = json.loads(config_json)
+            if isinstance(parsed, dict):
+                cfg_kwargs = parsed
+        except Exception:
+            cfg_kwargs = {}
 
     # Register in the shared job store before launching background task
     JOBS_DB[job_id] = init_job(job_id)

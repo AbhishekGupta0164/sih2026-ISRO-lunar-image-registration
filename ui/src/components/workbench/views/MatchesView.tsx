@@ -2,18 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { useApp } from '../../../context/AppContext';
 import { CorrespondenceMatchesCanvas } from '../../common/CorrespondenceMatchesCanvas';
 
-// ── Ground-truth values for the synthetic pair ──────────────────────────────
-const GT_ROTATION = 7.0;
-const GT_SCALE = 0.92;
-const GT_TX = 35.0;
-const GT_TY = 20.0;
-const GT_GAMMA = 0.7;
-
-// Estimated recovered values (from pipeline run on synthetic pair)
-const EST_ROTATION = 6.83;
-const EST_SCALE = 0.921;
-const EST_TX = 33.6;
-const EST_TY = 21.3;
+import { seleneApi } from '../../../services/api';
 
 // ── Score histogram canvas ───────────────────────────────────────────────────
 const ScoreHistogram: React.FC<{ inlierRatio: number }> = ({ inlierRatio }) => {
@@ -159,103 +148,106 @@ const ParamRow: React.FC<{
 
 // ── Main view ────────────────────────────────────────────────────────────────
 export const MatchesView: React.FC = () => {
-  const { results, referenceImage, sourceImage } = useApp();
+  const { results, referenceImage, sourceImage, isComplete } = useApp();
 
-  const refUrl  = referenceImage?.previewUrl || '/synthetic/reference.png';
-  const srcUrl  = sourceImage?.previewUrl    || '/synthetic/synthetic_target.png';
-  const raw     = results.raw     || 21389;
-  const inliers = results.inliers || 18742;
-  const ratio   = results.ratio   || 87.6;
-  const outliers = raw - inliers;
-  const inlierRatio = inliers / raw;
-  const coverage = results.coverage || 81;
-  const nni = results.nni || 0.84;
-  const rmse = results.rmse || 0.68;
-  const ce90 = results.ce90 || 0.91;
-  const matcherName = results.matcherUsed || 'lightglue';
+  const refUrl  = referenceImage?.previewUrl || seleneApi.productUrl('/synthetic/reference.png');
+  const srcUrl  = sourceImage?.previewUrl    || seleneApi.productUrl('/synthetic/synthetic_target.png');
+  const raw     = isComplete ? (results.raw || 0) : 0;
+  const inliers = isComplete ? (results.inliers || 0) : 0;
+  const ratio   = isComplete ? (results.ratio || 0) : 0;
+  const outliers = Math.max(0, raw - inliers);
+  const matcherName = isComplete ? (results.matcherUsed || 'auto') : 'Awaiting Execution';
 
-  // Inlier ratio colour
-  const ratioColor = ratio >= 80 ? '#3ee6a0' : ratio >= 55 ? '#ffb65c' : '#ff6b6b';
+  const rec = results.recoveredTransform;
+  const gt = results.groundTruthTransform;
+  const hasGt = Boolean(gt && gt.rotation_deg !== undefined);
+  const hasRec = Boolean(rec && rec.rotation_deg !== undefined);
+
+  const rotGtStr = gt?.rotation_deg !== undefined ? `${gt.rotation_deg}°` : 'Empirical (N/A)';
+  const rotRecStr = rec?.rotation_deg !== undefined ? `${rec.rotation_deg}°` : '—';
+  const rotErrStr = gt?.rotation_deg !== undefined && rec?.rotation_deg !== undefined
+    ? `Δ ${Math.abs(rec.rotation_deg - gt.rotation_deg).toFixed(2)}°`
+    : hasRec ? 'Estimated from GCPs' : '—';
+
+  const scaleGtStr = gt?.scale !== undefined ? `${gt.scale}×` : 'Empirical (N/A)';
+  const scaleRecStr = rec?.scale !== undefined ? `${rec.scale}×` : '—';
+  const scaleErrStr = gt?.scale !== undefined && rec?.scale !== undefined
+    ? `Δ ${Math.abs(rec.scale - gt.scale).toFixed(3)}×`
+    : hasRec ? 'Estimated from GCPs' : '—';
+
+  const txGtStr = gt?.tx_px !== undefined ? `${gt.tx_px} px` : 'Empirical (N/A)';
+  const txRecStr = rec?.tx_px !== undefined ? `${rec.tx_px} px` : '—';
+  const txErrStr = gt?.tx_px !== undefined && rec?.tx_px !== undefined
+    ? `Δ ${Math.abs(rec.tx_px - gt.tx_px).toFixed(1)} px`
+    : hasRec ? 'Estimated from GCPs' : '—';
+
+  const tyGtStr = gt?.ty_px !== undefined ? `${gt.ty_px} px` : 'Empirical (N/A)';
+  const tyRecStr = rec?.ty_px !== undefined ? `${rec.ty_px} px` : '—';
+  const tyErrStr = gt?.ty_px !== undefined && rec?.ty_px !== undefined
+    ? `Δ ${Math.abs(rec.ty_px - gt.ty_px).toFixed(1)} px`
+    : hasRec ? 'Estimated from GCPs' : '—';
 
   return (
-    <section id="view-matches" className="view-section active">
-      {/* ── Header ── */}
-      <div className="mb-5">
-        <div className="screen-title">Matches</div>
-        <div className="screen-subtitle">
-          Correspondence inspection · MAGSAC++ robust filtering · parameter recovery analysis
-        </div>
+    <section id="view-matches" className="view-section active space-y-6">
+      {/* PAGE HEADER */}
+      <div className="pb-4 border-b border-slate-200 dark:border-slate-800">
+        <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">
+          Feature Correspondences
+        </h1>
+        <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+          Inspect keypoint correspondence vectors, MAGSAC++ inlier filtering, and geometric transformation residuals.
+        </p>
       </div>
 
-      {/* ── Top KPIs ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        <div className="card bracket p-4">
-          <div className="mini-label">Raw Correspondences</div>
-          <div id="match-raw" className="metric-value mt-1.5">{raw.toLocaleString()}</div>
-          <div className="text-[10px] text-slate-500 mt-1">Before MAGSAC++ filtering</div>
+      {/* TOP KPIS */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-xl transition-colors">
+          <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Raw Matches</div>
+          <div id="match-raw" className="text-2xl font-extrabold text-slate-900 dark:text-white font-mono mt-1">
+            {isComplete ? raw.toLocaleString() : '—'}
+          </div>
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">Before filtering</div>
         </div>
 
-        <div className="card bracket p-4">
-          <div className="mini-label">Robust Inliers</div>
-          <div
-            id="match-inliers"
-            className="metric-value mt-1.5"
-            style={{ color: ratioColor, textShadow: `0 0 22px ${ratioColor}44` }}
-          >
-            {inliers.toLocaleString()}
+        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-xl transition-colors">
+          <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Robust Inliers</div>
+          <div id="match-inliers" className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 font-mono mt-1">
+            {isComplete ? inliers.toLocaleString() : '—'}
           </div>
-          <div className="text-[10px] text-slate-500 mt-1">After MAGSAC++ filtering</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">After MAGSAC++</div>
         </div>
 
-        <div className="card bracket p-4">
-          <div className="mini-label">Inlier Ratio</div>
-          <div className="metric-value mt-1.5" style={{ color: ratioColor }}>
-            {ratio.toFixed(1)}%
+        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-xl transition-colors">
+          <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Inlier Ratio</div>
+          <div className="text-2xl font-extrabold text-sky-600 dark:text-sky-400 font-mono mt-1">
+            {isComplete ? `${ratio.toFixed(1)}%` : '—'}
           </div>
-          {/* Ratio bar */}
-          <div className="progress-shell mt-2">
-            <div
-              className="progress-fill transition-all duration-1000"
-              style={{
-                width: `${ratio}%`,
-                background: `linear-gradient(90deg, ${ratioColor}aa, ${ratioColor})`,
-                boxShadow: `0 0 10px ${ratioColor}55`,
-              }}
-            />
+          <div className="w-full bg-slate-100 dark:bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-200 dark:border-slate-800 mt-2">
+            <div className="h-full bg-sky-500 shadow-[0_0_8px_rgba(56,189,248,0.6)]" style={{ width: `${ratio}%` }} />
           </div>
         </div>
 
-        <div className="card bracket p-4">
-          <div className="mini-label">Matcher Expert</div>
-          <div
-            id="match-method"
-            className="text-[17px] text-brand-300 font-semibold mt-2 tracking-tight uppercase"
-            style={{ textShadow: '0 0 18px rgba(111,246,255,0.3)' }}
-          >
+        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-xl transition-colors">
+          <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Selected Matcher</div>
+          <div id="match-method" className="text-lg font-extrabold text-sky-600 dark:text-sky-300 font-mono mt-1 uppercase truncate">
             {matcherName.replace(/_/g, ' ')}
           </div>
-          <div className="text-[10px] text-slate-500 mt-1">Gate-routed expert</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">Gate-routed engine</div>
         </div>
       </div>
 
-      {/* ── Correspondence Canvas ── */}
-      <div className="card p-5 mb-4">
-        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-          <h3 className="text-[13px] font-semibold text-white tracking-wide">
-            CORRESPONDENCE INSPECTION & SUB-PIXEL SCANNER
-            <span className="ml-2 font-mono text-[10px] text-brand-300 font-normal">
-              continuous sub-pixel mesh scanning active · hover/inspect patch keypoints
+      {/* CORRESPONDENCE CANVAS */}
+      <div className="p-6 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-4 shadow-xl transition-colors">
+        <div className="flex justify-between items-center flex-wrap gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+            Keypoint Correspondence Canvas
+          </h2>
+          <div className="flex gap-2 font-mono text-xs">
+            <span className="px-3 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-semibold">
+              Inliers: {isComplete ? inliers.toLocaleString() : '0'}
             </span>
-          </h3>
-          <div className="flex gap-2">
-            <span className="badge text-cyan-300" style={{ borderColor: 'rgba(111,246,255,0.35)' }}>
-              SUB-PIXEL ACCURACY: 0.01 PX
-            </span>
-            <span className="badge text-success" style={{ borderColor: 'rgba(62,230,160,0.35)' }}>
-              INLIER ({inliers.toLocaleString()})
-            </span>
-            <span className="badge text-warning" style={{ borderColor: 'rgba(255,182,92,0.35)' }}>
-              OUTLIER ({outliers.toLocaleString()})
+            <span className="px-3 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-semibold">
+              Outliers: {isComplete ? outliers.toLocaleString() : '0'}
             </span>
           </div>
         </div>
@@ -266,167 +258,68 @@ export const MatchesView: React.FC = () => {
           inliersCount={inliers}
           rawMatchesCount={raw}
           matcherName={matcherName}
-          rotationDeg={GT_ROTATION}
-          scaleFactor={GT_SCALE}
-          txPx={GT_TX}
-          tyPx={GT_TY}
+          rotationDeg={rec?.rotation_deg ?? (gt?.rotation_deg ?? 0)}
+          scaleFactor={rec?.scale ?? (gt?.scale ?? 1.0)}
+          txPx={rec?.tx_px ?? (gt?.tx_px ?? 0)}
+          tyPx={rec?.ty_px ?? (gt?.ty_px ?? 0)}
+          matchesCsvUrl={results.matchesCsvUrl ? seleneApi.productUrl(results.matchesCsvUrl) : undefined}
         />
-
-        <p className="font-mono text-[9px] text-slate-400 mt-3 tracking-[0.08em]">
-          ▸ ACTIVE SUB-PIXEL SCANNING VIA INVERSE-COMPOSITIONAL LUCAS-KANADE (IC-LK) / ECC CORRELATION.
-          · Continuous beam sweeps sub-pixel mesh grids across moving and reference frames to verify sub-pixel convergence (&lt;1.0 px RMSE target).
-        </p>
       </div>
 
-      {/* ── Middle row: histogram + heatmap + stats ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-
-        {/* Score Histogram */}
-        <div className="card p-5">
-          <h3 className="text-[12px] font-semibold text-white mb-3 tracking-wide">
-            MATCH CONFIDENCE DISTRIBUTION
-          </h3>
-          <ScoreHistogram inlierRatio={inlierRatio} />
-          <div className="flex justify-between mt-2 text-[10px] font-mono text-slate-500">
-            <span>Score 0.0 (outlier)</span>
-            <span>Score 1.0 (inlier)</span>
-          </div>
-          <div className="mt-3 space-y-1.5 text-[11px]">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Mean inlier score</span>
-              <span className="font-mono text-success">0.847</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Mean outlier score</span>
-              <span className="font-mono text-warning">0.193</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Score std-dev</span>
-              <span className="font-mono text-slate-200">0.134</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">P95 inlier score</span>
-              <span className="font-mono text-brand-300">0.941</span>
-            </div>
-          </div>
+      {/* PARAMETER RECOVERY TABLE */}
+      <div className="p-6 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-4 shadow-xl transition-colors">
+        <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-800 pb-3">
+          <h2 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+            Geometric Transformation Recovery Benchmark
+          </h2>
+          <span className="text-xs font-mono text-sky-600 dark:text-sky-400 bg-sky-500/10 px-2.5 py-1 rounded border border-sky-500/20">
+            {hasGt ? 'Synthetic Ground Truth Verification' : hasRec ? 'Empirical Homography Estimation' : 'Awaiting Run'}
+          </span>
         </div>
-
-        {/* Spatial Heatmap */}
-        <div className="card p-5 flex flex-col">
-          <h3 className="text-[12px] font-semibold text-white mb-3 tracking-wide">
-            INLIER SPATIAL DISTRIBUTION
-          </h3>
-          <div className="flex gap-4 items-start">
-            <InlierHeatmap inlierRatio={inlierRatio} coveragePct={coverage} />
-            <div className="flex-1 space-y-3 text-[11px] mt-1">
-              <div>
-                <div className="mini-label mb-1">Grid Coverage (8×8)</div>
-                <div className="text-[18px] font-semibold" style={{ color: '#3ee6a0' }}>
-                  {coverage}%
-                </div>
-                <div className="progress-shell mt-1.5">
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${coverage}%`, background: 'linear-gradient(90deg,#1fae74,#3ee6a0)' }}
-                  />
-                </div>
-              </div>
-              <div>
-                <div className="mini-label mb-1">NNI Uniformity</div>
-                <div className="font-mono text-[16px] text-brand-300">{nni.toFixed(3)}</div>
-                <div className="text-[10px] text-slate-500 mt-0.5">
-                  {nni >= 1.0 ? '✓ Well-dispersed' : nni >= 0.7 ? '~ Moderate spread' : '⚠ Clustered'}
-                </div>
-              </div>
-              <div>
-                <div className="mini-label mb-1">Outlier Rate</div>
-                <div className="font-mono text-[16px] text-warning">
-                  {(100 - ratio).toFixed(1)}%
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Registration Quality summary */}
-        <div className="card p-5">
-          <h3 className="text-[12px] font-semibold text-white mb-3 tracking-wide">
-            REGISTRATION QUALITY
-          </h3>
-          <div className="space-y-3 text-[11px]">
-            {/* RMSE bar */}
-            {[
-              { label: 'RMSE (px)', val: rmse, max: 3.0, good: rmse < 1.0, unit: ' px' },
-              { label: 'CE90 (px)', val: ce90, max: 4.0, good: ce90 < 1.5, unit: ' px' },
-              { label: 'Inlier Ratio', val: ratio / 100, max: 1.0, good: ratio > 70, unit: `${ratio.toFixed(1)}%` },
-            ].map(({ label, val, max, good, unit }) => (
-              <div key={label}>
-                <div className="flex justify-between mb-1">
-                  <span className="text-slate-400">{label}</span>
-                  <span className="font-mono" style={{ color: good ? '#3ee6a0' : '#ffb65c' }}>
-                    {unit}
-                  </span>
-                </div>
-                <div className="progress-shell">
-                  <div
-                    className="progress-fill"
-                    style={{
-                      width: `${Math.min(100, (val / max) * 100)}%`,
-                      background: good
-                        ? 'linear-gradient(90deg,#1fae74,#3ee6a0)'
-                        : 'linear-gradient(90deg,#c87028,#ffb65c)',
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-
-            <div className="pt-2 border-t border-[rgba(146,196,255,0.07)]">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Subpixel target (&lt;1.0 px)</span>
-                <span className={`badge text-[10px] ${rmse < 1.0 ? 'text-success border-success/30' : 'text-warning border-warning/30'}`}>
-                  {rmse < 1.0 ? '✓ MET' : '✗ FAILED'}
-                </span>
-              </div>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Min inliers (≥4)</span>
-              <span className="badge text-[10px] text-success border-success/30">✓ MET ({inliers})</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Parameter Recovery Table ── */}
-      <div className="card p-5">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-[13px] font-semibold text-white tracking-wide">
-            GROUND-TRUTH PARAMETER RECOVERY
-          </h3>
-          <span className="badge text-brand-300 text-[10px]">SYNTHETIC PAIR · KNOWN GT</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">
-                <th className="pb-2 pr-3 font-normal">Parameter</th>
-                <th className="pb-2 pr-3 font-normal">Ground Truth</th>
-                <th className="pb-2 pr-3 font-normal">Recovered</th>
-                <th className="pb-2 text-right font-normal">Error</th>
-              </tr>
-            </thead>
-            <tbody>
-              <ParamRow label="Rotation"     gt={`${GT_ROTATION}`}  est={`${EST_ROTATION}`}  err="0.17"  errNum={0.17}  unit="°"  />
-              <ParamRow label="Scale"        gt={`${GT_SCALE}`}     est={`${EST_SCALE}`}     err="0.001" errNum={0.1}   unit=""   />
-              <ParamRow label="Translation X" gt={`${GT_TX}`}       est={`${EST_TX}`}        err="1.4"   errNum={1.4}   unit=" px" />
-              <ParamRow label="Translation Y" gt={`${GT_TY}`}       est={`${EST_TY}`}        err="1.3"   errNum={1.3}   unit=" px" />
-              <ParamRow label="Illumination γ" gt={`${GT_GAMMA}`}   est="—"                  err="—"     errNum={0}     unit=""   />
-            </tbody>
-          </table>
-        </div>
-        <p className="text-[10px] text-slate-500 font-mono mt-3">
-          ▸ Parameter recovery uses full-pipeline MAGSAC++ homography decomposition on synthetic OHRC pair (7° rotation · 0.92× scale · 35px/20px shift · γ=0.70 illumination variance).
-        </p>
+        <table className="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-mono font-bold uppercase">
+              <th className="py-2.5 px-4">Parameter</th>
+              <th className="py-2.5 px-4">Ground Truth</th>
+              <th className="py-2.5 px-4">Recovered Value</th>
+              <th className="py-2.5 px-4 text-right">Residual Error</th>
+            </tr>
+          </thead>
+          <tbody className="font-mono text-slate-800 dark:text-slate-200 divide-y divide-slate-100 dark:divide-slate-800/80">
+            <tr>
+              <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">Rotation</td>
+              <td className="py-3 px-4">{rotGtStr}</td>
+              <td className="py-3 px-4 text-emerald-600 dark:text-emerald-400">{rotRecStr}</td>
+              <td className="py-3 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">
+                {rotErrStr}
+              </td>
+            </tr>
+            <tr>
+              <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">Scale Factor</td>
+              <td className="py-3 px-4">{scaleGtStr}</td>
+              <td className="py-3 px-4 text-emerald-600 dark:text-emerald-400">{scaleRecStr}</td>
+              <td className="py-3 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">
+                {scaleErrStr}
+              </td>
+            </tr>
+            <tr>
+              <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">Translation X</td>
+              <td className="py-3 px-4">{txGtStr}</td>
+              <td className="py-3 px-4 text-emerald-600 dark:text-emerald-400">{txRecStr}</td>
+              <td className="py-3 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">
+                {txErrStr}
+              </td>
+            </tr>
+            <tr>
+              <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">Translation Y</td>
+              <td className="py-3 px-4">{tyGtStr}</td>
+              <td className="py-3 px-4 text-emerald-600 dark:text-emerald-400">{tyRecStr}</td>
+              <td className="py-3 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">
+                {tyErrStr}
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </section>
   );

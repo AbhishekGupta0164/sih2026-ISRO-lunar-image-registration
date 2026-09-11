@@ -43,8 +43,8 @@ export const UploadView: React.FC = () => {
     referenceImage, sourceImage,
     sourceSensor,
     setReferenceFile, setSourceFile, setSourceSensor,
-    clearUploads, loadSyntheticPair, navigateTo,
-    addLog, addToast,
+    clearUploads, loadSyntheticPair, generateTargetFromReference, navigateTo,
+    addLog, addToast, isProcessing,
     setReferenceImage: _setRef, setSourceImage: _setSrc,
   } = useApp() as any;
 
@@ -53,561 +53,347 @@ export const UploadView: React.FC = () => {
 
   const refInputRef   = useRef<HTMLInputElement | null>(null);
   const srcInputRef   = useRef<HTMLInputElement | null>(null);
-  const baseImgRef    = useRef<HTMLInputElement | null>(null);
 
-  // ── Generator state ────────────────────────────────────────────────────────
-  const [genMode, setGenMode]         = useState<'none' | 'config'>('none');
-  const [baseFile, setBaseFile]       = useState<File | null>(null);
-  const [basePreview, setBasePreview] = useState<string>('');
-  const [generating, setGenerating]   = useState(false);
-  const [genDone, setGenDone]         = useState(false);
-
-  // Transform params
-  const [rotDeg, setRotDeg]   = useState(7.0);
-  const [scale, setScale]     = useState(0.92);
-  const [txPx, setTxPx]       = useState(35.0);
-  const [tyPx, setTyPx]       = useState(20.0);
-  const [gamma, setGamma]     = useState(0.7);
-  const [imgW, setImgW]       = useState(1024);
-  const [imgH, setImgH]       = useState(1024);
-
-  // Generated preview URLs
-  const [genRefUrl, setGenRefUrl] = useState('');
-  const [genSrcUrl, setGenSrcUrl] = useState('');
-
-  const handleBaseFilePick = (file: File) => {
-    setBaseFile(file);
-    setBasePreview(URL.createObjectURL(file));
-    setGenDone(false);
-  };
-
-  // Drop handlers
-  const handleRefDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer.files?.[0]) setReferenceFile(e.dataTransfer.files[0]);
-  };
-  const handleSrcDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer.files?.[0]) setSourceFile(e.dataTransfer.files[0]);
-  };
-
+  const [genMode, setGenMode] = useState<'none' | 'config'>('none');
   const pairReady = referenceImage !== null && sourceImage !== null;
-
-  // Run generation pipeline
-  const handleGenerate = async () => {
-    if (generating) return;
-    setGenerating(true);
-    setGenDone(false);
-    addLog('Running synthetic pair generation pipeline…', 'info');
-
-    try {
-      const data = await seleneApi.generateSyntheticPair({
-        baseImage:    baseFile,
-        rotationDeg:  rotDeg,
-        scale,
-        tx:           txPx,
-        ty:           tyPx,
-        gamma,
-        targetWidth:  imgW,
-        targetHeight: imgH,
-      });
-
-      const ts = `?t=${Date.now()}`;
-      const refUrl = `${data.reference_image_url}${ts}`;
-      const srcUrl = `${data.source_image_url}${ts}`;
-      setGenRefUrl(refUrl);
-      setGenSrcUrl(srcUrl);
-      setGenDone(true);
-
-      const refMeta = {
-        name: data.reference_name || 'reference.png',
-        size: 0, type: 'image/png',
-        sensor: 'Procedural Lunar Surface',
-        gsd: '0.25 m/px', sunAngle: '90.0° / 45.0°',
-        previewUrl: refUrl,
-      };
-      const srcMeta = {
-        name: data.source_name || 'synthetic_target.png',
-        size: 0, type: 'image/png',
-        sensor: 'OHRC Synthetic',
-        gsd: '0.25 m/px',
-        sunAngle: `az=${rotDeg}° / γ=${gamma}`,
-        previewUrl: srcUrl,
-      };
-
-      if (setRefMeta && setSrcMeta) {
-        setRefMeta(refMeta);
-        setSrcMeta(srcMeta);
-      } else {
-        const [refBlob, srcBlob] = await Promise.all([
-          fetch(refUrl).then(r => r.blob()),
-          fetch(srcUrl).then(r => r.blob()),
-        ]);
-        setReferenceFile(new File([refBlob], 'reference.png',        { type: 'image/png' }));
-        setSourceFile(  new File([srcBlob], 'synthetic_target.png',  { type: 'image/png' }));
-      }
-
-      const gt = (data.ground_truth as any)?.ground_truth_params ?? {};
-      addLog(
-        `Synthetic pair generated: rot=${gt.rotation_deg}° scale=${gt.scale} tx=${gt.translation_x_px}px ty=${gt.translation_y_px}px γ=${gt.gamma_illumination}`,
-        'success',
-      );
-      addToast('Synthetic pair generated and loaded into workspace!', 'success', 'Generation Complete');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Generation failed';
-      addLog(`Generation error: ${msg}`, 'error');
-      addToast(msg, 'error', 'Generation Error');
-    } finally {
-      setGenerating(false);
-    }
-  };
 
   return (
     <section id="view-upload" className="view-section active space-y-6">
       {/* PAGE HEADER */}
-      <div className="flex items-center gap-3 flex-wrap pb-1">
-        <h1 className="text-2xl font-bold font-display text-white tracking-wide">
-          Image Upload
-        </h1>
-        <span className="badge font-mono text-[10.5px] tracking-[0.14em] font-semibold text-cyan-300 bg-cyan-950/40 border border-cyan-500/30 px-3 py-1 rounded-md">
-          T1 PAIRDESK
-        </span>
-        <div className="screen-subtitle w-full text-[12.5px] text-slate-400 font-mono tracking-wide mt-1">
-          Upload the Reference and Source images — or generate a synthetic pair from custom parameters.
+      <div className="pb-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">
+            Image Pair Ingestion &amp; Inspection
+          </h1>
+          <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+            Upload lunar image pairs (Reference and Target rasters) to inspect metadata, resolution GSD, and sensor properties.
+          </p>
         </div>
-      </div>
 
-      {/* Mode toggle */}
-      <div className="flex gap-3 mb-2 flex-wrap">
         <button
-          className={`px-4 py-2.5 rounded-lg text-[11px] font-mono font-semibold tracking-wider border transition-all duration-200 cursor-pointer ${
-            genMode === 'none'
-              ? 'bg-cyan-950/50 border-cyan-400/50 text-cyan-300 shadow-[0_0_12px_rgba(111,246,255,0.15)]'
-              : 'bg-slate-900/50 border-slate-700/50 text-slate-400 hover:border-slate-600'
-          }`}
-          onClick={() => setGenMode('none')}
+          onClick={loadSyntheticPair}
+          className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs transition-all shadow-md shadow-sky-600/20 border border-sky-400/30"
         >
-          <UploadCloud className="inline w-3.5 h-3.5 mr-1.5 -mt-0.5" />
-          UPLOAD EXISTING PAIR
-        </button>
-        <button
-          className={`px-4 py-2.5 rounded-lg text-[11px] font-mono font-semibold tracking-wider border transition-all duration-200 cursor-pointer ${
-            genMode === 'config'
-              ? 'bg-cyan-950/50 border-cyan-400/50 text-cyan-300 shadow-[0_0_12px_rgba(111,246,255,0.15)]'
-              : 'bg-slate-900/50 border-slate-700/50 text-slate-400 hover:border-slate-600'
-          }`}
-          onClick={() => setGenMode('config')}
-        >
-          <Zap className="inline w-3.5 h-3.5 mr-1.5 -mt-0.5" />
-          GENERATE SYNTHETIC PAIR
+          Load Demo Synthetic Pair
         </button>
       </div>
 
-      {/* MODE A: Upload existing pair */}
-      {genMode === 'none' && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          {/* REFERENCE / FIXED CARD */}
-          <div className="card p-6 sm:p-7 rounded-xl bg-slate-950/60 border border-[rgba(146,196,255,0.14)] backdrop-blur-md flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-[13.5px] font-semibold font-display text-emerald-400 tracking-wide flex items-center gap-2.5 uppercase">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(62,230,160,0.8)] inline-block" />
-                  • REFERENCE / FIXED
-                </h3>
-                <span className="badge font-mono text-[10px] tracking-[0.12em] text-slate-300 bg-slate-900/80 border border-slate-700/60 px-3 py-1 rounded-md">
-                  LRO NAC / WAC
-                </span>
-              </div>
-
-              <input
-                ref={refInputRef}
-                type="file"
-                accept="image/*,.tif,.tiff,.lbl,.xml,.json"
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    setReferenceFile(e.target.files[0]);
-                  }
-                }}
-              />
-
-              <div
-                className="dropzone min-h-60 rounded-xl border-2 border-dashed border-cyan-500/30 bg-cyan-950/20 hover:border-cyan-400/70 hover:bg-cyan-950/30 transition-all flex flex-col items-center justify-center cursor-pointer text-center p-6 group"
-                onClick={() => refInputRef.current?.click()}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={handleRefDrop}
-              >
-                <div className="dz-icon mb-4 p-3.5 rounded-xl bg-blue-500/10 border border-blue-400/30 text-cyan-400 group-hover:scale-110 transition-transform">
-                  <UploadCloud className="w-7 h-7" />
-                </div>
-                <div className="text-[14px] font-bold font-display text-white">
-                  {referenceImage ? referenceImage.name : 'Drop reference image here'}
-                </div>
-                <div className="font-mono text-[10px] text-slate-400 mt-2 tracking-[0.14em]">
-                  GEOTIFF / PDS • CLICK TO BROWSE
-                </div>
-                {referenceImage?.previewUrl && (
-                  <img
-                    src={referenceImage.previewUrl}
-                    alt="Reference preview"
-                    className="mt-4 max-h-36 rounded-lg border border-[rgba(146,196,255,0.25)] object-contain shadow-lg"
-                  />
-                )}
-              </div>
+      {/* EMPTY STATE GUIDANCE BANNER */}
+      {!referenceImage && !sourceImage && (
+        <div className="p-4 rounded-xl bg-sky-500/10 border border-sky-500/30 text-sky-900 dark:text-sky-200 text-xs flex items-center justify-between flex-wrap gap-4 shadow-sm">
+          <div className="space-y-1 max-w-2xl">
+            <div className="font-bold flex items-center gap-1.5 text-sky-600 dark:text-sky-400">
+              <span className="text-base">💡</span> Image Pair Ingestion Guide
             </div>
-
-            <div className="grid grid-cols-3 gap-3 mt-5">
-              <div className="panel p-3 rounded-lg bg-[#07111b]/80 border border-[rgba(146,196,255,0.12)]">
-                <div className="flex items-center gap-1 font-mono text-[9.5px] text-slate-400 tracking-[0.12em] uppercase">
-                  <span className="text-cyan-400">•</span> SENSOR
-                </div>
-                <div className="text-white mt-1.5 text-[12px] font-mono font-semibold">
-                  LRO NAC
-                </div>
-              </div>
-              <div className="panel p-3 rounded-lg bg-[#07111b]/80 border border-[rgba(146,196,255,0.12)]">
-                <div className="flex items-center gap-1 font-mono text-[9.5px] text-slate-400 tracking-[0.12em] uppercase">
-                  <span className="text-cyan-400">•</span> GSD
-                </div>
-                <div className="text-white mt-1.5 text-[12px] font-mono font-semibold">
-                  0.50 m/px
-                </div>
-              </div>
-              <div className="panel p-3 rounded-lg bg-[#07111b]/80 border border-[rgba(146,196,255,0.12)]">
-                <div className="flex items-center gap-1 font-mono text-[9.5px] text-slate-400 tracking-[0.12em] uppercase">
-                  <span className="text-cyan-400">•</span> SUN ANGLE
-                </div>
-                <div className="text-white mt-1.5 text-[12px] font-mono font-semibold">
-                  142.1° / 34.5°
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* SOURCE / MOVING CARD */}
-          <div className="card p-6 sm:p-7 rounded-xl bg-slate-950/60 border border-[rgba(146,196,255,0.14)] backdrop-blur-md flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-[13.5px] font-semibold font-display text-cyan-300 tracking-wide flex items-center gap-2.5 uppercase">
-                  <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(111,246,255,0.8)] inline-block" />
-                  • SOURCE / MOVING
-                </h3>
-                <span className="badge font-mono text-[10px] tracking-[0.12em] text-slate-300 bg-slate-900/80 border border-slate-700/60 px-3 py-1 rounded-md">
-                  OHRC / TMC-2 / IIRS
-                </span>
-              </div>
-
-              <input
-                ref={srcInputRef}
-                type="file"
-                accept="image/*,.tif,.tiff,.lbl,.xml,.json"
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    setSourceFile(e.target.files[0]);
-                  }
-                }}
-              />
-
-              <div
-                className="dropzone min-h-60 rounded-xl border-2 border-dashed border-cyan-500/30 bg-cyan-950/20 hover:border-cyan-400/70 hover:bg-cyan-950/30 transition-all flex flex-col items-center justify-center cursor-pointer text-center p-6 group"
-                onClick={() => srcInputRef.current?.click()}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={handleSrcDrop}
-              >
-                <div className="dz-icon mb-4 p-3.5 rounded-xl bg-blue-500/10 border border-blue-400/30 text-cyan-400 group-hover:scale-110 transition-transform">
-                  <UploadCloud className="w-7 h-7" />
-                </div>
-                <div className="text-[14px] font-bold font-display text-white">
-                  {sourceImage ? sourceImage.name : 'Drop source image here'}
-                </div>
-                <div className="font-mono text-[10px] text-slate-400 mt-2 tracking-[0.14em]">
-                  GEOTIFF / PDS • CLICK TO BROWSE
-                </div>
-                {sourceImage?.previewUrl && (
-                  <img
-                    src={sourceImage.previewUrl}
-                    alt="Source preview"
-                    className="mt-4 max-h-36 rounded-lg border border-[rgba(146,196,255,0.25)] object-contain shadow-lg"
-                  />
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3 mt-5">
-              <div className="panel p-3 rounded-lg bg-[#07111b]/80 border border-[rgba(146,196,255,0.12)]">
-                <div className="flex items-center gap-1 font-mono text-[9.5px] text-slate-400 tracking-[0.12em] uppercase">
-                  <span className="text-cyan-400">•</span> SENSOR
-                </div>
-                <select
-                  value={sourceSensor}
-                  onChange={(e) => setSourceSensor(e.target.value)}
-                  className="w-full mt-1 bg-transparent border-0 p-0 text-white text-[11.5px] font-mono font-semibold focus:outline-none cursor-pointer"
-                >
-                  <option value="Chandrayaan-2 OHRC" className="bg-slate-900 text-white">OHRC</option>
-                  <option value="Chandrayaan-2 TMC-2" className="bg-slate-900 text-white">TMC-2</option>
-                  <option value="Chandrayaan-2 IIRS" className="bg-slate-900 text-white">IIRS (Multi-spectral)</option>
-                </select>
-              </div>
-              <div className="panel p-3 rounded-lg bg-[#07111b]/80 border border-[rgba(146,196,255,0.12)]">
-                <div className="flex items-center gap-1 font-mono text-[9.5px] text-slate-400 tracking-[0.12em] uppercase">
-                  <span className="text-cyan-400">•</span> {sourceSensor.includes('IIRS') ? 'IIRS BAND' : 'GSD'}
-                </div>
-                <div className="text-white mt-1.5 text-[12px] font-mono font-semibold">
-                  {sourceSensor.includes('IIRS') ? (
-                    <span className="text-cyan-300">Band #12</span>
-                  ) : (
-                    sourceImage?.gsd || '0.25 m/px'
-                  )}
-                </div>
-              </div>
-              <div className="panel p-3 rounded-lg bg-[#07111b]/80 border border-[rgba(146,196,255,0.12)]">
-                <div className="flex items-center gap-1 font-mono text-[9.5px] text-slate-400 tracking-[0.12em] uppercase">
-                  <span className="text-cyan-400">•</span> SUN ANGLE
-                </div>
-                <div className="text-white mt-1.5 text-[12px] font-mono font-semibold">
-                  284.3° / 32.1°
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODE B: Generate synthetic pair */}
-      {genMode === 'config' && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          {/* Left: base image upload */}
-          <div className="card p-6 sm:p-7 rounded-xl bg-slate-950/60 border border-[rgba(146,196,255,0.14)] backdrop-blur-md flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <ImageIcon className="w-4 h-4 text-cyan-300" />
-                <h3 className="text-[13.5px] font-bold font-display text-white tracking-wide uppercase">BASE IMAGE INPUT</h3>
-                <span className="badge font-mono text-[9.5px] text-slate-400 ml-auto border border-slate-700/60 px-2.5 py-0.5 rounded">
-                  OPTIONAL — fallback to procedural
-                </span>
-              </div>
-
-              <input
-                ref={baseImgRef} type="file" accept="image/*,.tif,.tiff"
-                className="hidden"
-                onChange={e => { if (e.target.files?.[0]) handleBaseFilePick(e.target.files[0]); }}
-              />
-
-              <div
-                className="dropzone min-h-56 rounded-xl border-2 border-dashed border-cyan-500/30 bg-cyan-950/20 hover:border-cyan-400/70 hover:bg-cyan-950/30 transition-all flex flex-col items-center justify-center cursor-pointer text-center p-6 group"
-                onClick={() => baseImgRef.current?.click()}
-                onDragOver={e => e.preventDefault()}
-                onDrop={e => { e.preventDefault(); if (e.dataTransfer.files?.[0]) handleBaseFilePick(e.dataTransfer.files[0]); }}
-              >
-                <div className="dz-icon mb-3.5 p-3 rounded-xl bg-blue-500/10 border border-blue-400/30 text-cyan-400 group-hover:scale-110 transition-transform">
-                  <UploadCloud className={`w-6 h-6 ${baseFile ? 'text-emerald-400' : 'text-cyan-400'}`} />
-                </div>
-                <div className="text-[14px] font-bold font-display text-white">
-                  {baseFile ? baseFile.name : 'Drop your lunar image here'}
-                </div>
-                <div className="font-mono text-[10px] text-slate-400 mt-1.5 tracking-[0.14em]">
-                  PNG / TIFF / JPG • CLICK TO BROWSE
-                </div>
-                {basePreview && (
-                  <img src={basePreview} alt="base"
-                    className="mt-3 max-h-36 rounded-lg border border-emerald-500/30 object-contain shadow-md" />
-                )}
-                {!baseFile && (
-                  <p className="text-[11px] text-slate-400 mt-3 max-w-xs font-mono">
-                    Leave empty to auto-generate a procedural lunar surface with synthetic crater geometry.
-                  </p>
-                )}
-              </div>
-
-              {baseFile && (
-                <button
-                  onClick={() => { setBaseFile(null); setBasePreview(''); setGenDone(false); }}
-                  className="mt-3 text-[10px] font-mono text-slate-400 hover:text-amber-400 transition-colors flex items-center gap-1 cursor-pointer"
-                >
-                  <RotateCcw className="w-3 h-3" /> CLEAR BASE IMAGE — USE PROCEDURAL
-                </button>
-              )}
-            </div>
-
-            {/* Output size */}
-            <div className="grid grid-cols-2 gap-3 mt-5">
-              <div className="panel p-3 rounded-lg bg-[#07111b]/80 border border-[rgba(146,196,255,0.12)]">
-                <div className="font-mono text-[9.5px] text-slate-400 tracking-[0.12em] uppercase mb-1">Output Width (px)</div>
-                <input type="number" min={64} max={4096} step={64} value={imgW}
-                  onChange={e => setImgW(parseInt(e.target.value) || 1024)}
-                  className="w-full bg-transparent text-white font-mono text-[12.5px] font-semibold border-0 outline-none" />
-              </div>
-              <div className="panel p-3 rounded-lg bg-[#07111b]/80 border border-[rgba(146,196,255,0.12)]">
-                <div className="font-mono text-[9.5px] text-slate-400 tracking-[0.12em] uppercase mb-1">Output Height (px)</div>
-                <input type="number" min={64} max={4096} step={64} value={imgH}
-                  onChange={e => setImgH(parseInt(e.target.value) || 1024)}
-                  className="w-full bg-transparent text-white font-mono text-[12.5px] font-semibold border-0 outline-none" />
-              </div>
-            </div>
-          </div>
-
-          {/* Right: transform parameters + run button */}
-          <div className="card p-6 sm:p-7 rounded-xl bg-slate-950/60 border border-[rgba(146,196,255,0.14)] backdrop-blur-md flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-2 mb-5">
-                <Sliders className="w-4 h-4 text-cyan-300" />
-                <h3 className="text-[13.5px] font-bold font-display text-white tracking-wide uppercase">TRANSFORM PARAMETERS</h3>
-              </div>
-
-              <div className="space-y-4">
-                <SliderRow label="Rotation"          unit="°"  value={rotDeg} min={-45}  max={45}  step={0.5}  onChange={setRotDeg}  color="#6ff6ff" />
-                <SliderRow label="Scale Factor"       unit="×"  value={scale}  min={0.5}  max={1.5} step={0.01} onChange={setScale}   color="#a9dcff" />
-                <SliderRow label="Translation X"      unit=" px" value={txPx}   min={-200} max={200} step={1}    onChange={setTxPx}   color="#3ee6a0" />
-                <SliderRow label="Translation Y"      unit=" px" value={tyPx}   min={-200} max={200} step={1}    onChange={setTyPx}   color="#3ee6a0" />
-                <SliderRow label="Illumination γ"     unit=""   value={gamma}  min={0.2}  max={2.0} step={0.05} onChange={setGamma}  color="#ffb65c" />
-              </div>
-
-              {/* Parameter preview */}
-              <div className="mt-5 p-3.5 rounded-lg bg-[#07111b]/90 border border-[rgba(146,196,255,0.12)] font-mono text-[10.5px] text-slate-400 space-y-1">
-                <div>rotation_deg = <span className="text-cyan-300 font-semibold">{rotDeg}</span></div>
-                <div>scale        = <span className="text-cyan-300 font-semibold">{scale}</span></div>
-                <div>tx           = <span className="text-emerald-400 font-semibold">{txPx} px</span></div>
-                <div>ty           = <span className="text-emerald-400 font-semibold">{tyPx} px</span></div>
-                <div>gamma        = <span className="text-amber-400 font-semibold">{gamma}</span></div>
-                <div>output_size  = <span className="text-white font-semibold">{imgW}×{imgH}</span></div>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <button
-                className={`w-full py-3.5 rounded-lg text-[12px] font-bold font-display tracking-[0.14em] flex items-center justify-center gap-2.5 transition-all cursor-pointer ${
-                  generating
-                    ? 'bg-slate-900 border border-slate-700 text-slate-400 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white hover:opacity-90 shadow-[0_0_18px_rgba(57,168,255,0.3)]'
-                }`}
-                onClick={handleGenerate}
-                disabled={generating}
-              >
-                {generating ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-cyan-400/40 border-t-cyan-300 rounded-full animate-spin" />
-                    RUNNING GENERATION PIPELINE…
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-4 h-4 text-cyan-300" />
-                    GENERATE SYNTHETIC PAIR
-                  </>
-                )}
-              </button>
-
-              {genDone && (
-                <div className="mt-3 p-3 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-[11px] text-emerald-400 font-mono flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                  Synthetic pair generated and loaded into workspace.
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Generated previews */}
-          {genDone && (
-            <div className="xl:col-span-2 grid grid-cols-1 xl:grid-cols-2 gap-6">
-              {[
-                { label: 'Reference (Fixed)', url: genRefUrl,  borderColor: 'border-emerald-500/40' },
-                { label: 'Source / Synthetic Target (Moving)', url: genSrcUrl, borderColor: 'border-cyan-500/40' },
-              ].map(({ label, url, borderColor }) => (
-                <div key={label} className="card p-5 rounded-xl bg-slate-950/60 border border-[rgba(146,196,255,0.14)] backdrop-blur-md">
-                  <div className="text-[12px] font-bold font-display text-white mb-3 tracking-wide uppercase">{label}</div>
-                  <img src={url} alt={label}
-                    className={`w-full max-h-60 object-contain rounded-lg border ${borderColor} shadow-md`} />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* PAIR SUMMARY CARD */}
-      <div className="card bracket p-6 sm:p-7 rounded-xl bg-slate-950/60 border border-[rgba(146,196,255,0.14)] backdrop-blur-md">
-        <div className="flex items-center justify-between flex-wrap gap-3 pb-2">
-          <div>
-            <h3 className="text-[14px] font-bold font-display text-white tracking-wide uppercase">
-              PAIR SUMMARY
-            </h3>
-            <p className="text-[12px] text-slate-400 font-mono tracking-wide mt-1">
-              Metadata is evaluated by the automatic matcher gate prior to registration execution.
+            <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+              Upload your <strong>Reference image</strong> and <strong>Target image</strong> below, or click <strong>Load Demo Synthetic Pair</strong> to test with pre-loaded Chandrayaan-2 / LRO NAC datasets. If you only upload 1 image as Reference, click <strong>Generate Target from Reference</strong> to create a matching synthetic pair.
             </p>
           </div>
-          <span
-            className={`badge font-mono text-[10.5px] tracking-[0.14em] font-semibold px-3.5 py-1.5 rounded-full flex items-center gap-2 ${
-              pairReady
-                ? 'text-emerald-400 bg-emerald-950/40 border border-emerald-500/30'
-                : 'text-slate-400 bg-slate-900/60 border border-slate-700/60'
-            }`}
-          >
-            {pairReady ? (
-              <>
-                <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                PAIR READY FOR REGISTRATION
-              </>
-            ) : (
-              'WAITING FOR BOTH IMAGES'
-            )}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
-          <div className="panel p-4 rounded-xl bg-[#07111b]/80 border border-[rgba(146,196,255,0.12)]">
-            <div className="flex items-center gap-1.5 font-mono text-[10px] text-slate-400 tracking-[0.12em] uppercase">
-              <span className="text-cyan-400">•</span> SCALE RATIO
-            </div>
-            <div className="text-white mt-2 font-mono text-[12.5px] font-semibold">
-              320× max
-            </div>
-          </div>
-          <div className="panel p-4 rounded-xl bg-[#07111b]/80 border border-[rgba(146,196,255,0.12)]">
-            <div className="flex items-center gap-1.5 font-mono text-[10px] text-slate-400 tracking-[0.12em] uppercase">
-              <span className="text-cyan-400">•</span> SUN-ANGLE DELTA
-            </div>
-            <div className="text-amber-400 mt-2 font-mono text-[12.5px] font-semibold">
-              142.6°
-            </div>
-          </div>
-          <div className="panel p-4 rounded-xl bg-[#07111b]/80 border border-[rgba(146,196,255,0.12)]">
-            <div className="flex items-center gap-1.5 font-mono text-[10px] text-slate-400 tracking-[0.12em] uppercase">
-              <span className="text-cyan-400">•</span> GSD STRATEGY
-            </div>
-            <div className="text-white mt-2 font-mono text-[12.5px] font-semibold">
-              Common coarse
-            </div>
-          </div>
-          <div className="panel p-4 rounded-xl bg-[#07111b]/80 border border-[rgba(146,196,255,0.12)]">
-            <div className="flex items-center gap-1.5 font-mono text-[10px] text-slate-400 tracking-[0.12em] uppercase">
-              <span className="text-cyan-400">•</span> LABEL PARSER
-            </div>
-            <div className="text-white mt-2 font-mono text-[12.5px] font-semibold">
-              PDS3 / PDS4 / JSON
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-4 mt-7 pt-6 border-t border-[rgba(146,196,255,0.12)] flex-wrap">
           <button
-            className="px-6 py-3.5 rounded-xl text-[12px] font-bold font-display tracking-[0.14em] bg-gradient-to-r from-[#1d64ec] to-[#00b4d8] text-white flex items-center gap-2.5 hover:opacity-95 hover:scale-[1.02] transition-all cursor-pointer shadow-[0_0_20px_rgba(29,100,236,0.35)] uppercase border border-cyan-400/40"
-            onClick={() => navigateTo('register')}
-          >
-            CONTINUE TO REGISTRATION <ExternalLink className="w-4 h-4 text-white" />
-          </button>
-          <button
-            className="px-6 py-3.5 rounded-xl text-[12px] font-bold font-display tracking-[0.14em] border border-cyan-400/40 text-cyan-300 bg-cyan-950/40 hover:bg-cyan-900/60 hover:text-white flex items-center gap-2.5 transition-all cursor-pointer shadow-[0_0_15px_rgba(111,246,255,0.15)] uppercase"
+            type="button"
             onClick={loadSyntheticPair}
+            className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs transition-all shadow-md"
           >
-            LOAD SYNTHETIC GENERATED PAIR <Zap className="w-4 h-4 text-cyan-400" />
-          </button>
-          <button
-            className="px-6 py-3.5 rounded-xl text-[12px] font-bold font-display tracking-[0.14em] border border-slate-700/80 bg-slate-900/60 text-slate-400 hover:text-white hover:border-slate-500 flex items-center gap-2 transition-all cursor-pointer uppercase"
-            onClick={clearUploads}
-          >
-            CLEAR UPLOADS <RotateCcw className="w-4 h-4" />
+            Load Demo Synthetic Pair
           </button>
         </div>
+      )}
+      {Boolean(referenceImage?.file && !referenceImage?.name?.startsWith('reference.png') && (sourceImage?.name?.includes('synthetic_target.png') || !sourceImage?.file)) && (
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between flex-wrap gap-4 shadow-sm">
+          <div className="space-y-1 max-w-2xl">
+            <div className="font-bold flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+              <span className="text-base">⚠️</span> Overlapping Image Pair Required
+            </div>
+            <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+              You loaded custom image <strong className="font-mono">{referenceImage?.name}</strong>, but Target is still the default synthetic sample. Registration requires two images covering the same lunar area. Upload a matching Target file, or auto-generate a matching target directly from this image.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={generateTargetFromReference}
+              disabled={isProcessing}
+              className="px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              {isProcessing ? 'Generating…' : 'Generate Matching Target'}
+            </button>
+            <button
+              type="button"
+              onClick={() => srcInputRef.current?.click()}
+              className="px-3 py-2 rounded-lg bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-semibold text-xs hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
+            >
+              Choose Target File
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* TWO CARDS GRID */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* REFERENCE IMAGE */}
+        <div className="p-6 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-4 shadow-xl transition-colors">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+              Reference Image
+            </h2>
+            <span className="text-xs font-mono text-sky-600 dark:text-sky-400 bg-sky-500/10 px-2.5 py-1 rounded border border-sky-500/20">Fixed Base Layer</span>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+              Sensor
+            </label>
+            <select
+              disabled
+              className="w-full p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-700 dark:text-slate-300 font-medium"
+            >
+              <option value="LRO NAC">LRO NAC (0.50 m/px)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+              File Input
+            </label>
+            <input
+              ref={refInputRef}
+              type="file"
+              accept="image/*,.tif,.tiff,.lbl,.xml,.json"
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  setReferenceFile(e.target.files[0]);
+                }
+              }}
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => refInputRef.current?.click()}
+                className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-900 dark:text-white hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                Choose File
+              </button>
+              <span className="text-xs font-mono text-slate-600 dark:text-slate-300 truncate">
+                {referenceImage ? referenceImage.name : 'reference.png'}
+              </span>
+            </div>
+          </div>
+
+          {/* Preview Box */}
+          <div>
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+              Image Preview
+            </label>
+            <div className="h-44 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-center p-2 overflow-hidden">
+              {referenceImage?.previewUrl ? (
+                <img
+                  src={referenceImage.previewUrl}
+                  alt="Reference preview"
+                  className="max-h-full max-w-full object-contain"
+                />
+              ) : (
+                <span className="text-xs text-slate-400">No preview available</span>
+              )}
+            </div>
+          </div>
+
+          {/* Info Table */}
+          <div className="pt-2">
+            <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Image Information</h3>
+            <table className="w-full text-xs border-collapse">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-slate-800 dark:text-slate-200">
+                <tr>
+                  <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">Dimensions:</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">
+                    {referenceImage?.dimensions || (referenceImage ? '1024 × 1024 px' : '—')}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">File Size:</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">
+                    {referenceImage ? `${(referenceImage.size / 1024).toFixed(1)} KB` : '—'}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">GSD:</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">{referenceImage?.gsd || '0.50 m/px'}</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">Sun Elevation:</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">{referenceImage?.sunAngle || '34.5°'}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* TARGET IMAGE */}
+        <div className="p-6 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-4 shadow-xl transition-colors">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+              Target Image
+            </h2>
+            <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded border border-emerald-500/20">Dataset: Chandrayaan-2</span>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+              Sensor
+            </label>
+            <select
+              value={sourceSensor}
+              onChange={(e) => setSourceSensor(e.target.value)}
+              className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-sky-600 dark:text-sky-300 font-semibold focus:border-sky-500 focus:outline-none"
+            >
+              <option value="Chandrayaan-2 OHRC">Chandrayaan-2 OHRC (0.25 m/px)</option>
+              <option value="Chandrayaan-2 TMC-2">Chandrayaan-2 TMC-2 (5.00 m/px)</option>
+              <option value="Chandrayaan-2 IIRS">Chandrayaan-2 IIRS (80.0 m/px)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+              File Input
+            </label>
+            <input
+              ref={srcInputRef}
+              type="file"
+              accept="image/*,.tif,.tiff,.lbl,.xml,.json"
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  setSourceFile(e.target.files[0]);
+                }
+              }}
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => srcInputRef.current?.click()}
+                className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-900 dark:text-white hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                Choose File
+              </button>
+              <span className="text-xs font-mono text-slate-600 dark:text-slate-300 truncate">
+                {sourceImage ? sourceImage.name : 'target.png'}
+              </span>
+            </div>
+          </div>
+
+          {/* Preview Box */}
+          <div>
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+              Image Preview
+            </label>
+            <div className="h-44 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-center p-2 overflow-hidden">
+              {sourceImage?.previewUrl ? (
+                <img
+                  src={sourceImage.previewUrl}
+                  alt="Target preview"
+                  className="max-h-full max-w-full object-contain"
+                />
+              ) : (
+                <span className="text-xs text-slate-400">No preview available</span>
+              )}
+            </div>
+          </div>
+
+          {/* Info Table */}
+          <div className="pt-2">
+            <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Image Information</h3>
+            <table className="w-full text-xs border-collapse">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-slate-800 dark:text-slate-200">
+                <tr>
+                  <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">Dimensions:</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">
+                    {sourceImage?.dimensions || (sourceImage ? '1024 × 1024 px' : '—')}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">File Size:</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">
+                    {sourceImage ? `${(sourceImage.size / 1024).toFixed(1)} KB` : '—'}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">GSD:</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">{sourceImage?.gsd || '0.25 m/px'}</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 text-slate-500 dark:text-slate-400 font-semibold">Sun Elevation:</td>
+                  <td className="py-1.5 font-mono text-right text-slate-900 dark:text-slate-100">{sourceImage?.sunAngle || '32.1°'}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* ACTION CONTROLS */}
+      <div className="p-6 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-between flex-wrap gap-4 shadow-xl">
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={loadSyntheticPair}
+            className="px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-100 hover:bg-slate-700 text-xs font-semibold transition-colors"
+          >
+            Reset Demo Pair
+          </button>
+          {referenceImage && (
+            <button
+              type="button"
+              onClick={generateTargetFromReference}
+              disabled={isProcessing}
+              className="px-4 py-2.5 rounded-xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/30 text-xs font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              {isProcessing ? 'Generating…' : 'Generate Target from Reference'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={clearUploads}
+            className="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-slate-200 text-xs font-semibold transition-colors"
+          >
+            Clear Inputs
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (!referenceImage && !sourceImage) {
+              addToast(
+                'Please upload both Reference and Target images first (or click "Load Demo Synthetic Pair") to continue.',
+                'error',
+                'Images Required'
+              );
+              return;
+            }
+            if (referenceImage && !sourceImage) {
+              addToast(
+                'Please upload a Target image or click "Generate Target from Reference" before continuing.',
+                'error',
+                'Target Missing'
+              );
+              return;
+            }
+            if (!referenceImage && sourceImage) {
+              addToast(
+                'Please upload a Reference image to pair with your Target image.',
+                'error',
+                'Reference Missing'
+              );
+              return;
+            }
+            navigateTo('register');
+          }}
+          className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs transition-all shadow-lg shadow-sky-600/25 border border-sky-400/30"
+        >
+          Continue to Registration
+        </button>
       </div>
     </section>
   );

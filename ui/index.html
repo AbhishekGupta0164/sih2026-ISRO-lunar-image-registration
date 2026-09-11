@@ -1,29 +1,40 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SELENE-MATCH — Lunar Image Registration · Mission Control</title>
-    <meta name="description" content="SELENE-MATCH is an open-source lunar image registration system aligning Chandrayaan-2 OHRC, TMC-2 and IIRS imagery with LRO reference data." />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%236ff6ff' stroke-width='1.5'/%3E%3Ccircle cx='20' cy='11' r='3' fill='%236ff6ff'/%3E%3C/svg%3E" />
+    <title>ISRO Lunar Image Registration Portal — Chandrayaan-2 & LRO Workbench</title>
+    <meta name="description" content="Official ISRO Smart India Hackathon PS 26166 Portal: Multi-modal lunar image registration, feature correspondence matching, and sub-pixel georeferencing suite." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%2338bdf8' stroke-width='1.5'/%3E%3Ccircle cx='20' cy='11' r='3' fill='%2338bdf8'/%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Rajdhani:wght@500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <script>
       tailwind = {
+        darkMode: 'class',
         config: {
+          darkMode: 'class',
           theme: {
             extend: {
               colors: {
-                brand: { 300: '#a9dcff', 400: '#6ff6ff', 500: '#45a6ff', 600: '#2f86dd' },
-                dark: { 900: '#040910', 800: '#0a1520', 700: '#10202e', 600: '#1b3040' },
-                success: '#3ee6a0', warning: '#ffb65c', danger: '#ff6b7a'
+                gov: {
+                  blue: '#1F4E79',
+                  darkblue: '#163A5C',
+                  lightbg: '#F5F5F5',
+                  card: '#FFFFFF',
+                  border: '#D0D0D0',
+                  text: '#222222',
+                  muted: '#555555',
+                  green: '#2E7D32',
+                  amber: '#B26A00',
+                  red: '#C62828'
+                }
               },
               fontFamily: {
-                display: ['"Chakra Petch"', '"Space Grotesk"', 'sans-serif'],
-                mono: ['"JetBrains Mono"', '"DM Mono"', 'monospace'],
-                tech: ['"Rajdhani"', '"Chakra Petch"', 'sans-serif']
+                sans: ['"Inter"', 'Arial', 'sans-serif'],
+                display: ['"Inter"', 'sans-serif'],
+                mono: ['"JetBrains Mono"', 'monospace']
               }
             }
           }

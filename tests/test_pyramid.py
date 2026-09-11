@@ -39,4 +39,7 @@ def test_coarse_to_fine_pyramid_matching():
 
     assert len(pts_s) == 4
     assert matcher_name.startswith("pyramid_")
+    np.testing.assert_allclose(pts_s, [[10.0, 10.0], [20.0, 20.0], [30.0, 30.0], [40.0, 40.0]])
+    np.testing.assert_allclose(pts_r, [[12.0, 11.0], [22.0, 21.0], [32.0, 31.0], [42.0, 41.0]])
+
 

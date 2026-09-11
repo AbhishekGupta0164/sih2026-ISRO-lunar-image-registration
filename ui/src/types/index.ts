@@ -22,6 +22,7 @@ export interface ImageMetadata {
   previewUrl: string;
   file?: File;
   bandIdx?: number;
+  dimensions?: string;
 }
 
 export interface ImagePairState {
@@ -51,7 +52,26 @@ export interface RegistrationResults {
   matcherUsed: string;
   /** Job ID returned by the backend; undefined in demo/simulation mode */
   jobId?: string;
+  registeredGeotiffUrl?: string;
+  registeredPngUrl?: string;
+  matchesCsvUrl?: string;
+  reportPdfUrl?: string;
+  checkerboardUrl?: string;
+  quiverUrl?: string;
+  coverageUrl?: string;
   residualHeatmapUrl?: string;
+  recoveredTransform?: {
+    rotation_deg?: number;
+    scale?: number;
+    tx_px?: number;
+    ty_px?: number;
+  };
+  groundTruthTransform?: {
+    rotation_deg?: number;
+    scale?: number;
+    tx_px?: number;
+    ty_px?: number;
+  };
 }
 
 export interface LogEntry {
@@ -75,4 +95,5 @@ export interface SettingsConfig {
   coordinateSystem: string;
   apiUrl: string;
   autoSave: boolean;
+  theme?: 'dark' | 'light';
 }

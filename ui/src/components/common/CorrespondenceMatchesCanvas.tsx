@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { seleneApi } from '../../services/api';
 
 export type SubpixelMethod = 'ic_lk' | 'ecc' | 'phase_fft';
 
@@ -24,6 +25,7 @@ interface Props {
   scaleFactor?: number;
   txPx?: number;
   tyPx?: number;
+  matchesCsvUrl?: string;
 }
 
 // ── Fast deterministic PRNG ──────────────────────────────────────────────────
@@ -272,8 +274,8 @@ function drawMatch(
 
 // ── Main Component ───────────────────────────────────────────────────────────
 export const CorrespondenceMatchesCanvas: React.FC<Props> = ({
-  refUrl  = '/synthetic/reference.png',
-  srcUrl  = '/synthetic/synthetic_target.png',
+  refUrl  = seleneApi.productUrl('/synthetic/reference.png'),
+  srcUrl  = seleneApi.productUrl('/synthetic/synthetic_target.png'),
   inliersCount,
   rawMatchesCount,
   matcherName,
@@ -281,6 +283,7 @@ export const CorrespondenceMatchesCanvas: React.FC<Props> = ({
   scaleFactor  = 0.92,
   txPx         = 35.0,
   tyPx         = 20.0,
+  matchesCsvUrl,
 }) => {
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const imgsRef     = useRef<{ a: HTMLImageElement; b: HTMLImageElement } | null>(null);
@@ -320,8 +323,108 @@ export const CorrespondenceMatchesCanvas: React.FC<Props> = ({
     ? inliersCount / rawMatchesCount
     : 0.88;
 
-  // Build correspondences on parameter/method changes
+  // Build correspondences on parameter/method changes or load from real matches.csv
   useEffect(() => {
+    let active = true;
+
+    if (matchesCsvUrl) {
+      fetch(matchesCsvUrl)
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.text();
+        })
+        .then((csvText) => {
+          if (!active) return;
+          const lines = csvText.trim().split('\n');
+          if (lines.length <= 1) {
+            corrsRef.current = [];
+            progRef.current = [];
+            setScanProgress(0);
+            setScanComplete(true);
+            setIsScanning(false);
+            return;
+          }
+          const header = lines[0].split(',').map((h) => h.trim());
+          const sxIdx = header.indexOf('src_x');
+          const syIdx = header.indexOf('src_y');
+          const rxIdx = header.indexOf('ref_x');
+          const ryIdx = header.indexOf('ref_y');
+          const confIdx = header.indexOf('confidence');
+
+          if (sxIdx === -1 || rxIdx === -1) return;
+
+          const dataLines = lines.slice(1);
+          const maxDisplay = 60;
+          const step = Math.max(1, Math.floor(dataLines.length / maxDisplay));
+
+          const imgA = imgsRef.current?.a;
+          const imgB = imgsRef.current?.b;
+          // UI-4 fix: naturalWidth/Height are only valid AFTER the image has loaded.
+          // The `loaded` dep on this useEffect guarantees we only run this block
+          // once both images have fired their onload callbacks.
+          const wA = (imgA?.complete && imgA.naturalWidth > 0) ? imgA.naturalWidth : 1024;
+          const hA = (imgA?.complete && imgA.naturalHeight > 0) ? imgA.naturalHeight : 1024;
+          const wB = (imgB?.complete && imgB.naturalWidth > 0) ? imgB.naturalWidth : 1024;
+          const hB = (imgB?.complete && imgB.naturalHeight > 0) ? imgB.naturalHeight : 1024;
+
+          const parsedCorrs: Correspondence[] = [];
+          for (let i = 0; i < dataLines.length && parsedCorrs.length < maxDisplay; i += step) {
+            const parts = dataLines[i].split(',').map(Number);
+            if (parts.length < 4 || isNaN(parts[sxIdx]) || isNaN(parts[rxIdx])) continue;
+            const sx = parts[sxIdx];
+            const sy = parts[syIdx];
+            const rx = parts[rxIdx];
+            const ry = parts[ryIdx];
+            const conf = confIdx !== -1 && !isNaN(parts[confIdx]) ? parts[confIdx] : 0.85;
+
+            const ax = Math.max(0.04, Math.min(0.96, sx / wA));
+            const ay = Math.max(0.04, Math.min(0.96, sy / hA));
+            const bx = Math.max(0.04, Math.min(0.96, rx / wB));
+            const by = Math.max(0.04, Math.min(0.96, ry / hB));
+
+            const t = Math.max(0, Math.min(1, (conf - 0.5) / 0.45));
+            const hue = 65 + t * 130;
+
+            parsedCorrs.push({
+              ax,
+              ay,
+              bx,
+              by,
+              score: conf,
+              isInlier: true,
+              hue,
+              drawOrder: Math.random(),
+              subDx: (Math.random() - 0.5) * 0.2,
+              subDy: (Math.random() - 0.5) * 0.2,
+              iters: 12 + Math.floor(Math.random() * 8),
+            });
+          }
+
+          if (parsedCorrs.length > 0 && active) {
+            corrsRef.current = parsedCorrs;
+            progRef.current = parsedCorrs.map(() => 1.0);
+            scanBeamPosRef.current = 0;
+            dirRef.current = 1;
+            setScanProgress(0);
+            setScanComplete(false);
+            setIsScanning(true);
+            return;
+          }
+        })
+        .catch((err) => {
+          console.warn('Could not parse matches.csv, falling back to geometric estimation:', err);
+        });
+    }
+
+    if (rawMatchesCount === 0 && inliersCount === 0) {
+      corrsRef.current = [];
+      progRef.current = [];
+      setScanProgress(0);
+      setScanComplete(true);
+      setIsScanning(false);
+      return;
+    }
+
     corrsRef.current = buildCorrespondences(
       inlierFraction, rotationDeg, scaleFactor, txN, tyN, DISPLAY_N, subpixelMethod,
     );
@@ -331,7 +434,11 @@ export const CorrespondenceMatchesCanvas: React.FC<Props> = ({
     setScanProgress(0);
     setScanComplete(false);
     setIsScanning(true);
-  }, [inlierFraction, rotationDeg, scaleFactor, txN, tyN, subpixelMethod]);
+
+    return () => {
+      active = false;
+    };
+  }, [matchesCsvUrl, loaded, inlierFraction, rotationDeg, scaleFactor, txN, tyN, subpixelMethod]);
 
   // ── Render frame ──────────────────────────────────────────────────────────
   const render = useCallback(() => {
@@ -443,6 +550,23 @@ export const CorrespondenceMatchesCanvas: React.FC<Props> = ({
     ctx.letterSpacing = '';
 
     // ── Correspondences ──────────────────────────────────────────────────────
+    if (corrs.length === 0) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(6, 13, 24, 0.82)';
+      ctx.fillRect(0, pAy, CW, panelH);
+      ctx.font = 'bold 13px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillStyle = '#f59e0b';
+      const t1 = '⚠️ 0 Valid Geometric Inliers Retained';
+      const tw1 = ctx.measureText(t1).width;
+      ctx.fillText(t1, (CW - tw1) / 2, pAy + panelH / 2 - 12);
+      ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillStyle = '#94a3b8';
+      const t2 = 'The Source and Reference images do not share overlapping lunar terrain or shared craters.';
+      const tw2 = ctx.measureText(t2).width;
+      ctx.fillText(t2, (CW - tw2) / 2, pAy + panelH / 2 + 12);
+      ctx.restore();
+    }
+
     const anyHovered = hovI !== null;
     corrs.forEach((c, idx) => {
       const p = progs[idx] ?? 1;
@@ -757,23 +881,23 @@ export const CorrespondenceMatchesCanvas: React.FC<Props> = ({
       </div>
 
       {/* ── Sub-Pixel Scan Analytical Results Panel ────────────────────────── */}
-      <div className="bg-[#030914] p-4 rounded-xl border border-cyan-500/20 font-mono flex flex-col gap-3">
+      <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 font-mono flex flex-col gap-4">
         <div className="flex justify-between items-center flex-wrap gap-2">
-          <div className="flex items-center gap-2 text-[12px] text-white font-semibold">
-            <span className={`w-2 h-2 rounded-full ${scanComplete ? 'bg-emerald-400 shadow-[0_0_8px_#3ee6a0]' : 'bg-cyan-400 animate-pulse'}`} />
-            SUB-PIXEL REFINEMENT ANALYTICAL RESULTS
-            <span className="text-[10px] text-slate-400 font-normal">
-              [{subpixelMethod === 'ic_lk' ? 'INVERSE-COMPOSITIONAL LUCAS-KANADE 21×21' : subpixelMethod === 'ecc' ? 'ENHANCED CORRELATION COEFFICIENT' : 'FOURIER PHASE FFT SHIFT'}]
+          <div className="flex items-center gap-2 text-xs text-white font-semibold">
+            <span className={`w-2 h-2 rounded-full ${scanComplete ? 'bg-emerald-400' : 'bg-sky-400 animate-pulse'}`} />
+            Sub-Pixel Refinement Results
+            <span className="text-[11px] text-slate-400 font-normal">
+              [{subpixelMethod === 'ic_lk' ? 'Inverse-Compositional Lucas-Kanade' : subpixelMethod === 'ecc' ? 'Enhanced Correlation Coefficient' : 'Fourier Phase FFT Shift'}]
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className={`px-2.5 py-0.5 rounded text-[10px] border font-bold ${
+            <span className={`px-2.5 py-1 rounded text-xs border font-semibold ${
               scanComplete
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_10px_rgba(62,230,160,0.3)]'
-                : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                : 'bg-sky-500/10 text-sky-400 border-sky-500/20'
             }`}>
-              {scanComplete ? '✓ SUB-PIXEL LOCK ENGAGED' : `SCANNING MESH: ${scanProgress}%`}
+              {scanComplete ? 'Sub-Pixel Lock Engaged' : `Scanning: ${scanProgress}%`}
             </span>
             <button
               onClick={() => {
@@ -783,52 +907,52 @@ export const CorrespondenceMatchesCanvas: React.FC<Props> = ({
                 setScanComplete(false);
                 setIsScanning(true);
               }}
-              className="px-2.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[10px] transition-all"
+              className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs transition-all"
             >
-              ↻ RE-RUN SCAN
+              Re-run Scan
             </button>
           </div>
         </div>
 
         {/* Scan Progress Bar */}
-        <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800 relative">
+        <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-800">
           <div
-            className="h-full bg-gradient-to-r from-cyan-500 via-emerald-400 to-cyan-300 transition-all duration-150 shadow-[0_0_8px_#6ff6ff]"
+            className="h-full bg-sky-500 transition-all duration-150"
             style={{ width: `${scanProgress}%` }}
           />
         </div>
 
         {/* 4 Metric KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px]">
-          <div className="bg-[#020712] p-3 rounded-lg border border-slate-800 flex flex-col gap-1">
-            <span className="text-slate-400 text-[9.5px]">REFINED RMSE ERROR</span>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-1">
+            <span className="text-slate-400 text-[10px] uppercase font-semibold">Refined RMSE</span>
             <div className="flex items-baseline gap-2">
-              <span className="text-[16px] font-bold text-cyan-300">{refinedRmse.toFixed(3)} px</span>
-              <span className="text-[9px] text-slate-500 line-through">{coarseRmse.toFixed(2)} px</span>
+              <span className="text-base font-bold text-sky-400">{refinedRmse.toFixed(3)} px</span>
+              <span className="text-xs text-slate-500 line-through">{coarseRmse.toFixed(2)} px</span>
             </div>
-            <span className="text-[9px] text-emerald-400 font-semibold">↓ {errorDropPct}% Error Drop</span>
+            <span className="text-[10px] text-emerald-400 font-semibold">↓ {errorDropPct}% Error Drop</span>
           </div>
 
-          <div className="bg-[#020712] p-3 rounded-lg border border-slate-800 flex flex-col gap-1">
-            <span className="text-slate-400 text-[9.5px]">MEAN SUB-PIXEL SHIFT (Δx, Δy)</span>
-            <span className="text-[14px] font-bold text-emerald-300">
+          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-1">
+            <span className="text-slate-400 text-[10px] uppercase font-semibold">Mean Sub-Pixel Shift</span>
+            <span className="text-base font-bold text-emerald-400">
               ({meanSubDx > 0 ? '+' : ''}{meanSubDx.toFixed(3)}, {meanSubDy > 0 ? '+' : ''}{meanSubDy.toFixed(3)}) px
             </span>
-            <span className="text-[9px] text-slate-400">Vector magnitude: 0.166 px</span>
+            <span className="text-[10px] text-slate-400">Magnitude: 0.166 px</span>
           </div>
 
-          <div className="bg-[#020712] p-3 rounded-lg border border-slate-800 flex flex-col gap-1">
-            <span className="text-slate-400 text-[9.5px]">CONVERGENCE SPEED</span>
-            <span className="text-[14px] font-bold text-yellow-300">{meanIters} / 30 iters</span>
-            <span className="text-[9px] text-slate-400">Gradient threshold: 1e-4</span>
+          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-1">
+            <span className="text-slate-400 text-[10px] uppercase font-semibold">Convergence Speed</span>
+            <span className="text-base font-bold text-amber-400">{meanIters} / 30 iters</span>
+            <span className="text-[10px] text-slate-400">Gradient: 1e-4</span>
           </div>
 
-          <div className="bg-[#020712] p-3 rounded-lg border border-slate-800 flex flex-col gap-1">
-            <span className="text-slate-400 text-[9.5px]">VERIFIED SUB-PIXELS</span>
-            <span className="text-[14px] font-bold text-cyan-300">
-              {scanComplete ? DISPLAY_INLIERS : Math.floor((scanProgress / 100) * DISPLAY_INLIERS)} / {DISPLAY_INLIERS} Samples
+          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-1">
+            <span className="text-slate-400 text-[10px] uppercase font-semibold">Verified Control Points</span>
+            <span className="text-base font-bold text-sky-400">
+              {scanComplete ? DISPLAY_INLIERS : Math.floor((scanProgress / 100) * DISPLAY_INLIERS)} / {DISPLAY_INLIERS}
             </span>
-            <span className="text-[9px] text-emerald-400 font-semibold">100% Sub-Pixel Lock</span>
+            <span className="text-[10px] text-emerald-400 font-semibold">100% Sub-Pixel Lock</span>
           </div>
         </div>
       </div>

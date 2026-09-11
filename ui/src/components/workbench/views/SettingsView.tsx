@@ -1,64 +1,96 @@
 import React from 'react';
 import { Sliders, Activity, Server, Save } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
+import { seleneApi } from '../../../services/api';
 
 export const SettingsView: React.FC = () => {
-  const { settings, updateSettings, addLog, addToast } = useApp();
+  const { settings, updateSettings, addLog, addToast, theme, setTheme } = useApp();
 
-  const handleTestApi = () => {
-    addLog(`API connection test requested for: ${settings.apiUrl}`, 'info');
-    addToast(
-      'API connection check completed. Workbench is ready.',
-      'success',
-      'API Check'
-    );
+  const handleTestApi = async () => {
+    addLog(`Testing API connection to: ${settings.apiUrl}…`, 'info');
+    try {
+      const isOnline = await seleneApi.checkHealth();
+      if (isOnline) {
+        addLog(`API connection successful: ${settings.apiUrl}`, 'success');
+        addToast(`API connected successfully to ${settings.apiUrl}`, 'success', 'API Connected');
+      } else {
+        addLog(`API health check failed for: ${settings.apiUrl}`, 'error');
+        addToast(`Backend reachable but health check returned non-200.`, 'error', 'API Warning');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Connection failed';
+      addLog(`API connection failed: ${msg}`, 'error');
+      addToast(`Could not connect to API at ${settings.apiUrl}`, 'error', 'API Offline');
+    }
   };
 
   return (
     <section id="view-settings" className="view-section active space-y-6">
       {/* PAGE HEADER */}
-      <div className="flex items-center gap-3 flex-wrap pb-1">
-        <h1 className="text-2xl font-bold font-display text-white tracking-wide">
-          Settings
+      <div className="pb-4 border-b border-slate-200 dark:border-slate-800">
+        <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">
+          Workbench Preferences &amp; Configuration
         </h1>
-        <span className="badge font-mono text-[10.5px] tracking-[0.14em] font-semibold text-cyan-300 bg-cyan-950/40 border border-cyan-500/30 px-3 py-1 rounded-md">
-          WORKBENCH CONFIG
-        </span>
-        <div className="screen-subtitle w-full text-[12.5px] text-slate-400 font-mono tracking-wide mt-1">
-          Workbench display parameters, default pipeline routing, and API endpoint configuration.
-        </div>
+        <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+          Configure default registration strategies, API server endpoints, and user interface theme preferences.
+        </p>
       </div>
 
-      {/* SETTINGS CARD */}
-      <div className="card p-6 sm:p-8 rounded-xl bg-slate-950/60 border border-[rgba(146,196,255,0.14)] backdrop-blur-md space-y-8 max-w-4xl">
+      {/* SETTINGS FORM */}
+      <div className="p-6 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-6 max-w-4xl shadow-xl transition-colors">
+        {/* APPEARANCE / THEME PREFERENCES */}
+        <div className="space-y-3">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider pb-3 border-b border-slate-200 dark:border-slate-800">
+            Interface Appearance Theme
+          </h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">
+                Application Theme Mode
+              </label>
+              <select
+                value={theme}
+                onChange={(e) => setTheme(e.target.value as 'dark' | 'light')}
+                className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none font-semibold"
+              >
+                <option value="dark">Dark Space Theme (ISRO Deep Space)</option>
+                <option value="light">Light Theme (High Contrast Crisp)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         {/* REGISTRATION ENGINE */}
-        <div>
-          <h3 className="text-[13px] font-bold font-display text-cyan-300 border-b border-[rgba(146,196,255,0.14)] pb-3 tracking-[0.14em] uppercase flex items-center gap-2">
-            <Sliders className="w-4 h-4 text-cyan-400" />
-            • REGISTRATION ENGINE
-          </h3>
-          <div className="grid md:grid-cols-2 gap-6 mt-4">
-            <label className="text-[11.5px] text-slate-400 font-mono flex flex-col gap-2">
-              <span className="font-semibold text-slate-300">DEFAULT GSD STRATEGY</span>
+        <div className="space-y-3 pt-2">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider pb-3 border-b border-slate-200 dark:border-slate-800">
+            Registration Engine Defaults
+          </h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">
+                Default GSD Strategy
+              </label>
               <select
                 value={settings.defaultGsdStrategy}
                 onChange={(e) =>
                   updateSettings({ defaultGsdStrategy: e.target.value })
                 }
-                className="w-full p-3 bg-[#060f19] border border-[rgba(146,196,255,0.18)] rounded-lg text-white font-mono text-[13px] focus:border-cyan-400 focus:outline-none transition-colors"
+                className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none font-medium"
               >
                 <option value="Common coarsest GSD">Common coarsest GSD</option>
                 <option value="Reference GSD">Reference GSD</option>
               </select>
-            </label>
-            <label className="text-[11.5px] text-slate-400 font-mono flex flex-col gap-2">
-              <span className="font-semibold text-slate-300">DEFAULT MATCHER</span>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">
+                Default Matcher
+              </label>
               <select
                 value={settings.defaultMatcher}
                 onChange={(e) =>
                   updateSettings({ defaultMatcher: e.target.value })
                 }
-                className="w-full p-3 bg-[#060f19] border border-[rgba(146,196,255,0.18)] rounded-lg text-white font-mono text-[13px] focus:border-cyan-400 focus:outline-none transition-colors"
+                className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-sky-600 dark:text-sky-300 font-semibold focus:border-sky-500 focus:outline-none"
               >
                 <option value="Automatic gate routing">
                   Automatic gate routing
@@ -66,90 +98,30 @@ export const SettingsView: React.FC = () => {
                 <option value="LoFTR Dense Deep Matcher">LoFTR Dense Deep Matcher</option>
                 <option value="XFeat Lightweight Matcher">XFeat Lightweight Matcher</option>
                 <option value="LightGlue">LightGlue</option>
-                <option value="Crater Graph">Crater Graph</option>
-                <option value="Census Transform SIFT">Census Transform SIFT</option>
               </select>
-            </label>
+            </div>
           </div>
         </div>
 
-        {/* VISUALIZATION */}
-        <div>
-          <h3 className="text-[13px] font-bold font-display text-cyan-300 border-b border-[rgba(146,196,255,0.14)] pb-3 tracking-[0.14em] uppercase flex items-center gap-2">
-            <Activity className="w-4 h-4 text-cyan-400" />
-            • VISUALIZATION
-          </h3>
-          <div className="grid md:grid-cols-2 gap-6 mt-4">
-            <label className="text-[11.5px] text-slate-400 font-mono flex flex-col gap-2">
-              <span className="font-semibold text-slate-300">
-                HEATMAP OPACITY ({settings.heatmapOpacity}%)
-              </span>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={settings.heatmapOpacity}
-                onChange={(e) =>
-                  updateSettings({ heatmapOpacity: parseInt(e.target.value, 10) })
-                }
-                className="w-full mt-3 accent-cyan-400 cursor-pointer"
-              />
-            </label>
-            <label className="text-[11.5px] text-slate-400 font-mono flex flex-col gap-2">
-              <span className="font-semibold text-slate-300">COORDINATE SYSTEM</span>
-              <select
-                value={settings.coordinateSystem}
-                onChange={(e) =>
-                  updateSettings({ coordinateSystem: e.target.value })
-                }
-                className="w-full p-3 bg-[#060f19] border border-[rgba(146,196,255,0.18)] rounded-lg text-white font-mono text-[13px] focus:border-cyan-400 focus:outline-none transition-colors"
-              >
-                <option value="Selenographic (Lat / Lon)">
-                  Selenographic (Lat / Lon)
-                </option>
-                <option value="Image Pixels (x, y)">Image Pixels (x, y)</option>
-                <option value="Projected metres">Projected metres</option>
-              </select>
-            </label>
-          </div>
-        </div>
-
-        {/* API & CONNECTION */}
-        <div>
-          <h3 className="text-[13px] font-bold font-display text-cyan-300 border-b border-[rgba(146,196,255,0.14)] pb-3 tracking-[0.14em] uppercase flex items-center gap-2">
-            <Server className="w-4 h-4 text-cyan-400" />
-            • API &amp; CONNECTION
-          </h3>
-          <div className="flex gap-3 mt-4 flex-wrap sm:flex-nowrap">
+        {/* API CONFIGURATION */}
+        <div className="space-y-3 pt-2">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider pb-3 border-b border-slate-200 dark:border-slate-800">
+            API Endpoint Configuration
+          </h2>
+          <div className="flex gap-3">
             <input
               type="text"
               value={settings.apiUrl}
               onChange={(e) => updateSettings({ apiUrl: e.target.value })}
-              className="flex-1 p-3 bg-[#060f19] border border-[rgba(146,196,255,0.18)] rounded-lg text-white font-mono text-[13px] focus:border-cyan-400 focus:outline-none transition-colors"
+              className="flex-1 p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-900 dark:text-slate-100 font-mono focus:border-sky-500 focus:outline-none"
             />
             <button
               onClick={handleTestApi}
-              className="px-6 py-3.5 rounded-xl text-[11.5px] font-bold font-display tracking-[0.14em] bg-gradient-to-r from-[#1d64ec] to-[#00b4d8] text-white flex items-center gap-2 transition-all cursor-pointer shadow-[0_0_20px_rgba(29,100,236,0.35)] uppercase border border-cyan-400/40 whitespace-nowrap hover:opacity-95 hover:scale-[1.02]"
+              className="px-5 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow-md shadow-sky-600/20 border border-sky-400/30 transition-all"
             >
-              TEST CONNECTION
+              Test Connection
             </button>
           </div>
-        </div>
-
-        {/* AUTO-SAVE */}
-        <div className="pt-2">
-          <label className="flex items-center gap-3 text-[12.5px] font-mono text-slate-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={settings.autoSave}
-              onChange={(e) => updateSettings({ autoSave: e.target.checked })}
-              className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-cyan-400 focus:ring-0"
-            />
-            <span className="flex items-center gap-2">
-              <Save className="w-4 h-4 text-cyan-400" />
-              Auto-save results &amp; parameters to local storage
-            </span>
-          </label>
         </div>
       </div>
     </section>
