@@ -1,31 +1,40 @@
-# Python
+```
+# Results and output files
+results/
+
+# Compiled and build artifacts
+*.pyc
 __pycache__/
-*.py[cod]
-*.egg-info/
+*.o
+*.obj
+*.so
+*.dll
+*.exe
+build/
+dist/
+
+# Dependencies
 .venv/
+venv/
 .env
+.env.local
+.env.*
 
-# Conda
-*.conda
+# Logs and temp files
+*.log
+*.tmp
+*.swp
 
-# Data & products (large / regenerable)
-data/samples/*/*.img
-data/samples/*/*.tif
-data/samples/*/*.tiff
-data/samples/*/*.qub
-data/dem/*.tif
-products/*
-!products/.gitkeep
-
-# Node / UI
-ui/node_modules/
-ui/dist/
-
-# OS / editor
-.DS_Store
+# Editors
 .vscode/
 .idea/
 
-# Logs
-*.log
-.matplotlib_cache/
+# Coverage reports
+.coverage
+coverage/
+htmlcov/
+
+# Test and cache directories
+.pytest_cache/
+.mypy_cache/
+```

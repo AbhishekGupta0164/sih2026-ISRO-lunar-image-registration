@@ -13,6 +13,7 @@ import argparse
 import datetime
 import json
 import shutil
+import time
 import zipfile
 from pathlib import Path
 import numpy as np
@@ -78,7 +79,6 @@ def run_pipeline(
     if config is None:
         config = PipelineConfig()
     
-    import time
     t_start = time.time()
     set_reproducible_seed(config.seed if hasattr(config, "seed") else 42)
 
@@ -100,7 +100,6 @@ def run_pipeline(
 
     # ── Stage 1: Ingest & Geometry ────────────────────────────────────────────
     _notify(0.12, "Stage 1: Ingesting PDS labels, sensor telemetry & reading 16-bit rasters")
-    time.sleep(0.3)
     pair = Pair.from_paths(ref=ref_path, mov=src_path)
     img_src, crs_src, trans_src = load_image_any(src_path)
     img_ref, crs_ref, trans_ref = load_image_any(ref_path)
@@ -113,30 +112,35 @@ def run_pipeline(
 
     # ── Stage 2: GSD Pyramid Scale Equalization ──────────────────────────────
     _notify(0.25, "Stage 2: Constructing multi-scale Gaussian pyramids & resampling to uniform GSD")
-    time.sleep(0.3)
     common_gsd_m = max(pair.ref_meta.gsd_m, pair.mov_meta.gsd_m)
     img_src_work = resample_to_gsd(img_src, pair.mov_meta.gsd_m, common_gsd_m)
     img_ref_work = resample_to_gsd(img_ref, pair.ref_meta.gsd_m, common_gsd_m)
     log.info(f"Stage 2 GSD Pyramid: resampled to common GSD={common_gsd_m:.2f}m | src_work={img_src_work.shape}, ref_work={img_ref_work.shape}")
 
-    # ── Stage 2b: Illumination Shadow Masking ───────────────────────────────
+    # ── Stage 3: Illumination Shadow Masking ───────────────────────────────
     _notify(0.35, "Stage 3: Illumination shadow masking & Wallis adaptive filtering")
-    time.sleep(0.3)
     shadow_mask_src = detect_shadows(img_src_work)
     shadow_mask_ref = detect_shadows(img_ref_work)
     shadow_pct = (np.count_nonzero(shadow_mask_src) / max(shadow_mask_src.size, 1)) * 100.0
     log.info(f"Stage 3 Shadow Mask: computed exclusion zones ({np.count_nonzero(shadow_mask_src)} shadow px, {shadow_pct:.1f}% area)")
 
-    # ── Stage 3/4: Matching Ensemble & Gate (Multi-Scale Pyramid) ───────────────
+    # ── Stage 4: Matching Ensemble & Gate (Multi-Scale Pyramid) ───────────────
     _notify(0.50, "Stage 4: Feature matching & mutual correspondence extraction")
-    time.sleep(0.4)
-    pts_src_w, pts_ref_w, scores, matcher_name = match_coarse_to_fine_pyramid(
-        img_src=img_src,
-        img_ref=img_ref,
-        pair=pair,
-        config=config,
-        route_and_match_fn=route_and_match,
-    )
+    try:
+        pts_src_w, pts_ref_w, scores, matcher_name = match_coarse_to_fine_pyramid(
+            img_src=img_src,
+            img_ref=img_ref,
+            pair=pair,
+            config=config,
+            route_and_match_fn=route_and_match,
+        )
+    except Exception as e:
+        log.exception(f"Stage 4 Matcher failed: {e}")
+        raise RuntimeError(
+            f"Feature matching failed: {e}. "
+            "Please ensure both images depict overlapping lunar surface areas with shared craters."
+        ) from e
+    
     log.info(f"Stage 4 Matcher [{matcher_name}]: extracted {len(pts_src_w)} candidate feature correspondences")
 
     if len(pts_src_w) < 4:
@@ -151,10 +155,22 @@ def run_pipeline(
 
     # ── Stage 5: Robust Fit & Shadow-Aware Uniform GCP Sampling ─────────────
     _notify(0.65, "Stage 5: USAC_MAGSAC++ robust geometry fitting & outlier filtering")
-    time.sleep(0.4)
     # REG-5 fix: convert threshold from metres to pixels using reference GSD
     magsac_threshold_px = config.magsac_threshold_m / max(pair.ref_meta.gsd_m, 1e-6)
-    H_fit, inlier_mask = find_homography_magsac(pts_src_nat, pts_ref_nat, threshold_px=magsac_threshold_px)
+    
+    try:
+        H_fit, inlier_mask = find_homography_magsac(pts_src_nat, pts_ref_nat, threshold_px=magsac_threshold_px)
+    except Exception as e:
+        log.exception(f"Stage 5 MAGSAC++ homography estimation failed: {e}")
+        raise RuntimeError(f"Robust geometry fitting failed: {e}") from e
+    
+    if H_fit is None:
+        log.error("MAGSAC++ could not find a valid homography - images may be too different or have insufficient overlap")
+        raise RuntimeError(
+            "Homography estimation failed. The image pair may have insufficient overlap, "
+            "extreme illumination differences, or depict non-overlapping regions."
+        )
+    
     inlier_ratio_pct = (np.sum(inlier_mask) / max(len(pts_src_nat), 1)) * 100.0
     log.info(f"Stage 5 MAGSAC++: retained {np.sum(inlier_mask)} inliers / {len(pts_src_nat)} candidates ({inlier_ratio_pct:.1f}% consensus, threshold={magsac_threshold_px:.2f}px)")
 
@@ -163,31 +179,62 @@ def run_pipeline(
     scores_in = scores[inlier_mask] if len(scores) == len(inlier_mask) else None
 
     # Spatial uniformity sampling with shadow mask exclusion
-    pts_src_gcp, pts_ref_gcp, sel_idx = sample_uniform_gcps(
-        pts_src_in,
-        pts_ref_in,
-        scores=scores_in,
-        image_shape=img_src.shape[:2],
-        grid_cells=config.grid_cells,
-        min_dist_px=config.min_gcp_spacing_px,
-        shadow_mask=shadow_mask_src,
-    )
+    if len(pts_src_in) < 4:
+        log.error(f"Insufficient inliers after MAGSAC ({len(pts_src_in)} points). Cannot sample uniform GCPs.")
+        raise RuntimeError(
+            f"Only {len(pts_src_in)} geometric inliers found (minimum 4 required). "
+            "The images may have low overlap, extreme scale differences, or incorrect matching."
+        )
+    
+    try:
+        pts_src_gcp, pts_ref_gcp, sel_idx = sample_uniform_gcps(
+            pts_src_in,
+            pts_ref_in,
+            scores=scores_in,
+            image_shape=img_src.shape[:2],
+            grid_cells=config.grid_cells,
+            min_dist_px=config.min_gcp_spacing_px,
+            shadow_mask=shadow_mask_src,
+        )
+    except Exception as e:
+        log.exception(f"Stage 5 GCP sampling failed: {e}")
+        raise RuntimeError(f"Uniform GCP sampling failed: {e}") from e
+    
     log.info(f"Stage 5 Uniform Sampler: selected {len(pts_src_gcp)} well-distributed GCPs across 8x8 grid")
 
     # ── Stage 7: Sub-Pixel Refinement ─────────────────────────────────────────
     _notify(0.78, "Stage 7: Sub-pixel IC-LK Lucas-Kanade 21x21 refinement")
-    time.sleep(0.4)
-    pts_src_refined, valid_lk = refine_subpixel_lk(
-        img_ref=img_ref,
-        img_mov=img_src,
-        pts_ref=pts_ref_gcp,
-        pts_mov=pts_src_gcp,
-        patch_size=config.lk_patch_size,
-        max_iters=config.lk_max_iter,
-        eps=config.lk_eps,
-    )
+    
+    if len(pts_src_gcp) < 4:
+        log.error(f"Insufficient GCPs for sub-pixel refinement ({len(pts_src_gcp)} points)")
+        raise RuntimeError(
+            f"Only {len(pts_src_gcp)} GCPs available for refinement (minimum 4 required). "
+            "The matching or homography estimation may have failed due to image differences."
+        )
+    
+    try:
+        pts_src_refined, valid_lk = refine_subpixel_lk(
+            img_ref=img_ref,
+            img_mov=img_src,
+            pts_ref=pts_ref_gcp,
+            pts_mov=pts_src_gcp,
+            patch_size=config.lk_patch_size,
+            max_iters=config.lk_max_iter,
+            eps=config.lk_eps,
+        )
+    except Exception as e:
+        log.exception(f"Stage 7 sub-pixel refinement failed: {e}")
+        raise RuntimeError(f"Sub-pixel refinement failed: {e}") from e
+    
     pts_src_final = pts_src_refined[valid_lk]
     pts_ref_final = pts_ref_gcp[valid_lk]
+    
+    if len(pts_src_final) < 4:
+        log.error(f"Insufficient valid GCPs after sub-pixel refinement ({len(pts_src_final)} points)")
+        raise RuntimeError(
+            f"Only {len(pts_src_final)} GCPs remained after sub-pixel refinement (minimum 4 required). "
+            "This may indicate poor initial matches or extreme illumination differences."
+        )
     
     # --- P2.1 GCP Confidence Score ---
     scores_gcp = scores_in[sel_idx] if scores_in is not None else np.ones(len(pts_src_gcp))
@@ -219,22 +266,43 @@ def run_pipeline(
     # ── Stage 6: Warping & Co-Registration ────────────────────────────────────
     _notify(0.88, "Stage 6: Warping image & exporting GeoTIFF")
     ref_shape = img_ref.shape[:2]
+    
+    warped = None
     if config.warp_model == "tps" and len(pts_src_final) >= config.min_gcps_for_tps:
-        warped = warp_tps(img_src, pts_src_final, pts_ref_final, output_shape=ref_shape)
-    elif config.warp_model == "piecewise_affine" and len(pts_src_final) >= 4:
-        warped = piecewise_affine_warp(img_src, pts_src_final, pts_ref_final, output_shape=ref_shape)
-    else:
+        try:
+            warped = warp_tps(img_src, pts_src_final, pts_ref_final, output_shape=ref_shape)
+        except Exception as e:
+            log.warning(f"TPS warp failed ({e}), falling back to homography")
+            warped = None
+    
+    if warped is None and config.warp_model == "piecewise_affine" and len(pts_src_final) >= 4:
+        try:
+            warped = piecewise_affine_warp(img_src, pts_src_final, pts_ref_final, output_shape=ref_shape)
+        except Exception as e:
+            log.warning(f"Piecewise affine warp failed ({e}), falling back to homography")
+            warped = None
+    
+    if warped is None:
         # Fallback to homography warp
         if len(pts_src_final) >= 4:
-            H_final, _ = cv2.findHomography(pts_src_final, pts_ref_final, cv2.RANSAC)
+            try:
+                H_final, _ = cv2.findHomography(pts_src_final, pts_ref_final, cv2.RANSAC)
+            except Exception as e:
+                log.warning(f"Homography estimation for warp failed ({e})")
+                H_final = H_fit
         elif H_fit is not None:
             H_final = H_fit
         else:
             H_final = None
 
         if H_final is not None:
-            warped = cv2.warpPerspective(img_src, H_final, (ref_shape[1], ref_shape[0]))
+            try:
+                warped = cv2.warpPerspective(img_src, H_final, (ref_shape[1], ref_shape[0]))
+            except Exception as e:
+                log.error(f"Warp perspective failed: {e}")
+                warped = img_src
         else:
+            log.warning("No valid transformation available, using source image unchanged")
             warped = img_src
 
     # Export Warped GeoTIFF / Product
@@ -337,17 +405,12 @@ def run_pipeline(
         json.dump(metrics_dict, f, indent=2)
 
     # Verification Plots
-    print("DEBUG: starting plot_checkerboard", flush=True)
     p_checker = plot_checkerboard(img_ref, warped, out_path / "plot_checkerboard.png")
-    print("DEBUG: starting plot_quiver", flush=True)
     p_quiver = plot_quiver(pts_src_final, pts_ref_final, out_path / "plot_quiver.png", image_shape=ref_shape)
-    print("DEBUG: starting plot_coverage_heatmap", flush=True)
     p_heatmap = plot_coverage_heatmap(pts_ref_final, out_path / "plot_coverage.png", image_shape=ref_shape)
-    print("DEBUG: starting plot_residual_heatmap", flush=True)
     p_residual = plot_residual_heatmap(pts_src_final, pts_ref_final, out_path / "plot_residual_heatmap.png", image_shape=ref_shape)
 
     # Deliverable PDF
-    print("DEBUG: starting generate_pdf_report", flush=True)
     exec_time = time.time() - t_start
     pdf_report = generate_pdf_report(
         job_dir=out_path,
@@ -362,7 +425,6 @@ def run_pipeline(
         pts_ref=pts_ref_final,
         pts_src=pts_src_final,
     )
-    print("DEBUG: finished generate_pdf_report", flush=True)
 
     log.info(f"Pipeline completed successfully. RMSE={metrics.rmse_m:.2f} m ({metrics.rmse_px:.2f} px)")
 

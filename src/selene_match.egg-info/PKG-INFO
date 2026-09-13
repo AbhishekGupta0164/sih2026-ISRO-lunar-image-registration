@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: selene-match
+Version: 0.1.0
+Summary: Multi-modal, sun-angle and scale-invariant lunar image correspondence (SIH 2026, PS 26166)
+License: MIT
+Requires-Python: >=3.11
+License-File: LICENSE
+Dynamic: license-file
