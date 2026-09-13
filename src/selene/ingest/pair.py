@@ -158,15 +158,29 @@ class Pair:
 
     @property
     def delta_sun_az(self) -> float:
-        """Absolute sun-azimuth difference between reference and moving image (°)."""
-        return abs(self.ref_meta.sun_azimuth - self.mov_meta.sun_azimuth)
+        """Circular angular distance between sun azimuths (°).
+        
+        Uses proper circular statistics: min(|a-b|, 360-|a-b|)
+        Examples:
+            359° vs 1° => 2°
+            1° vs 359° => 2°  
+            10° vs 350° => 20°
+            30° vs 210° => 180°
+        """
+        diff = abs(self.ref_meta.sun_azimuth - self.mov_meta.sun_azimuth) % 360.0
+        return min(diff, 360.0 - diff)
 
     @property
     def gsd_ratio(self) -> float:
         """GSD ratio ≥ 1.0.  Large values mean very different spatial resolutions."""
         a, b = self.ref_meta.gsd_m, self.mov_meta.gsd_m
-        if b == 0.0:
+        # Handle edge case where both GSDs are zero or very small
+        if a == 0.0 and b == 0.0:
             return 1.0
+        if b == 0.0:
+            return float('inf') if a > 0 else 1.0
+        if a == 0.0:
+            return float('inf') if b > 0 else 1.0
         return max(a, b) / min(a, b)
 
     @property
