@@ -11,11 +11,8 @@ Owner: P1
 """
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Any
-
-_log = logging.getLogger("selene.ingest.metadata")
 
 # Sentinel — distinct from None so we can detect "key not found"
 _MISSING = object()
@@ -72,7 +69,6 @@ def extract_metadata(label: dict[str, Any], strict: bool = False) -> ImageMetada
                 "Sun azimuth not found in label. "
                 "Searched: sun_azimuth_deg, sun_az, SOLAR_AZIMUTH, SUB_SOLAR_AZIMUTH"
             )
-        _log.warning(f"Sun azimuth not found, using default 90° for {label.get('filename', 'unknown')}")
         sun_az_raw = 90.0
     sun_az = float(sun_az_raw)
 
@@ -86,7 +82,6 @@ def extract_metadata(label: dict[str, Any], strict: bool = False) -> ImageMetada
                 "Sun elevation not found in label. "
                 "Searched: sun_elevation_deg, sun_el, SOLAR_ELEVATION, SUB_SOLAR_ELEVATION"
             )
-        _log.warning(f"Sun elevation not found, using default 45° for {label.get('filename', 'unknown')}")
         sun_el_raw = 45.0
     sun_el = float(sun_el_raw)
 
@@ -102,7 +97,6 @@ def extract_metadata(label: dict[str, Any], strict: bool = False) -> ImageMetada
                 "GSD not found in label. "
                 "Searched: gsd_m, MAP_SCALE, PIXEL_SCALE, IMAGE_SCALE"
             )
-        _log.warning(f"GSD not found, using default 5.0m for {label.get('filename', 'unknown')}")
         gsd_raw = 5.0
     gsd = float(gsd_raw)
     if gsd > 1000:          # value was in km/px — convert to m/px

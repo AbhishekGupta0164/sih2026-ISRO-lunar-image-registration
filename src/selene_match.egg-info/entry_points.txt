@@ -1,2 +1,0 @@
-[console_scripts]
-selene = selene.cli:main

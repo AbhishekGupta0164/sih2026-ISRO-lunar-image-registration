@@ -4,7 +4,6 @@ Owner: P3
 """
 from __future__ import annotations
 
-import logging
 import numpy as np
 from selene.config import PipelineConfig
 from selene.ingest.pair import Pair
@@ -19,8 +18,6 @@ from selene.craters.graph_match import build_crater_graph, match_crater_graphs
 from selene.illum.phase_congruency import phase_congruency
 from selene.illum.hillshade import relight
 from selene.illum.census import census_transform
-
-log = logging.getLogger("selene.matchers.gate")
 
 
 def select_matcher(pair: Pair, config: PipelineConfig | None = None) -> str:
@@ -96,56 +93,33 @@ def route_and_match(
         if len(pts_s) >= 4:
             return pts_s, pts_r, scores, "census_sift"
 
-        # Final fallback to basic SIFT
-        pts_s, pts_r, scores = match_sift(img_src, img_ref)
-        return pts_s, pts_r, scores, "sift_fallback"
+        return match_sift(img_src, img_ref) + ("sift_fallback",)
 
     elif strategy == "loftr":
-        try:
-            pts_s, pts_r, scores = match_loftr(img_src, img_ref, device=device)
-            if len(pts_s) >= 4:
-                return pts_s, pts_r, scores, "loftr"
-        except Exception as e:
-            log.warning(f"LoFTR matcher failed ({e}), falling back to SIFT")
+        pts_s, pts_r, scores = match_loftr(img_src, img_ref, device=device)
+        if len(pts_s) >= 4:
+            return pts_s, pts_r, scores, "loftr"
         pts_s, pts_r, scores = match_sift(img_src, img_ref)
         return pts_s, pts_r, scores, "sift_fallback"
 
     elif strategy == "xfeat":
-        try:
-            pts_s, pts_r, scores = match_xfeat(img_src, img_ref, device=device)
-            if len(pts_s) >= 4:
-                return pts_s, pts_r, scores, "xfeat"
-        except Exception as e:
-            log.warning(f"XFeat matcher failed ({e}), falling back to SIFT")
+        pts_s, pts_r, scores = match_xfeat(img_src, img_ref, device=device)
+        if len(pts_s) >= 4:
+            return pts_s, pts_r, scores, "xfeat"
         pts_s, pts_r, scores = match_sift(img_src, img_ref)
         return pts_s, pts_r, scores, "sift_fallback"
 
     elif strategy == "mutual_info":
-        try:
-            pts_s, pts_r, scores = match_mutual_information(img_src, img_ref)
-            return pts_s, pts_r, scores, "mutual_info"
-        except Exception as e:
-            log.warning(f"Mutual information matcher failed ({e}), falling back to SIFT")
-            pts_s, pts_r, scores = match_sift(img_src, img_ref)
-            return pts_s, pts_r, scores, "sift_fallback"
+        pts_s, pts_r, scores = match_mutual_information(img_src, img_ref)
+        return pts_s, pts_r, scores, "mutual_info"
 
     elif strategy == "phase_corr":
-        try:
-            pts_s, pts_r, scores = match_phase_correlation(img_src, img_ref)
-            return pts_s, pts_r, scores, "phase_corr"
-        except Exception as e:
-            log.warning(f"Phase correlation matcher failed ({e}), falling back to SIFT")
-            pts_s, pts_r, scores = match_sift(img_src, img_ref)
-            return pts_s, pts_r, scores, "sift_fallback"
+        pts_s, pts_r, scores = match_phase_correlation(img_src, img_ref)
+        return pts_s, pts_r, scores, "phase_corr"
 
     elif strategy == "lightglue":
-        try:
-            pts_s, pts_r, scores, actual_matcher = match_lightglue(img_src, img_ref, device=device)
-            return pts_s, pts_r, scores, actual_matcher
-        except Exception as e:
-            log.warning(f"LightGlue matcher failed ({e}), falling back to SIFT")
-            pts_s, pts_r, scores = match_sift(img_src, img_ref)
-            return pts_s, pts_r, scores, "sift_fallback"
+        pts_s, pts_r, scores, actual_matcher = match_lightglue(img_src, img_ref, device=device)
+        return pts_s, pts_r, scores, actual_matcher
 
     else:  # sift baseline
         pts_s, pts_r, scores = match_sift(img_src, img_ref)
