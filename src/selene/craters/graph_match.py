@@ -61,36 +61,77 @@ def match_crater_graphs(
     graph_src: dict,
     graph_ref: dict,
     dist_threshold: float = 0.5,
+    max_radius_ratio_dev: float = 0.4,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Match crater graph descriptors between source and reference scenes.
 
+    Enforces:
+    1. Mutual 1-to-1 nearest neighbor verification (src->ref AND ref->src).
+    2. Maximum descriptor distance threshold.
+    3. Radius ratio consistency: crater size proportions must be physically plausible.
+
     Args:
-        graph_src: Graph dict from source image.
-        graph_ref: Graph dict from reference image.
+        graph_src: Graph dict from source image containing 'centers', 'radii', 'descriptors'.
+        graph_ref: Graph dict from reference image containing 'centers', 'radii', 'descriptors'.
         dist_threshold: Maximum normalized feature distance for matching.
+        max_radius_ratio_dev: Maximum allowed relative deviation from median radius ratio.
 
     Returns:
-        (pts_src, pts_ref) arrays of shape (M, 2) of matching crater coordinates.
+        (pts_src, pts_ref) arrays of shape (M, 2) of verified matching crater coordinates.
     """
     desc_src = graph_src.get("descriptors")
     desc_ref = graph_ref.get("descriptors")
+    radii_src = graph_src.get("radii")
+    radii_ref = graph_ref.get("radii")
+    centers_src = graph_src.get("centers")
+    centers_ref = graph_ref.get("centers")
 
-    if desc_src is None or desc_ref is None or len(desc_src) < 3 or len(desc_ref) < 3:
+    if (
+        desc_src is None
+        or desc_ref is None
+        or len(desc_src) < 3
+        or len(desc_ref) < 3
+        or centers_src is None
+        or centers_ref is None
+    ):
         return np.empty((0, 2), dtype=np.float32), np.empty((0, 2), dtype=np.float32)
 
+    # 1. Forward query: src -> ref
     tree_ref = KDTree(desc_ref)
-    dists, matches = tree_ref.query(desc_src, k=1)
+    dists_fwd, matches_fwd = tree_ref.query(desc_src, k=1)
 
-    valid = dists < dist_threshold
-    if not np.any(valid):
-        # Fallback: take top 4 smallest distance matches if reasonable
-        top_k = min(len(dists), 8)
-        top_idx = np.argsort(dists)[:top_k]
-        valid = np.zeros_like(dists, dtype=bool)
-        valid[top_idx] = True
+    # 2. Backward query: ref -> src for mutual 1-to-1 consistency
+    tree_src = KDTree(desc_src)
+    dists_bwd, matches_bwd = tree_src.query(desc_ref, k=1)
 
-    pts_src = graph_src["centers"][valid]
-    matched_ref_indices = matches[valid]
-    pts_ref = graph_ref["centers"][matched_ref_indices]
+    # 3. Find mutual matches within distance threshold
+    mutual_src_idx = []
+    mutual_ref_idx = []
+    for i, j in enumerate(matches_fwd):
+        if dists_fwd[i] < dist_threshold:
+            if matches_bwd[j] == i and dists_bwd[j] < dist_threshold:
+                mutual_src_idx.append(i)
+                mutual_ref_idx.append(j)
+
+    if len(mutual_src_idx) < 3:
+        return np.empty((0, 2), dtype=np.float32), np.empty((0, 2), dtype=np.float32)
+
+    mutual_src_idx = np.array(mutual_src_idx, dtype=int)
+    mutual_ref_idx = np.array(mutual_ref_idx, dtype=int)
+
+    # 4. Radius consistency verification if radii available
+    if radii_src is not None and radii_ref is not None:
+        r_s = radii_src[mutual_src_idx]
+        r_r = radii_ref[mutual_ref_idx]
+        ratios = r_s / (r_r + 1e-6)
+        med_ratio = np.median(ratios)
+        if med_ratio > 0:
+            rel_dev = np.abs(ratios - med_ratio) / med_ratio
+            valid_ratio = rel_dev <= max_radius_ratio_dev
+            mutual_src_idx = mutual_src_idx[valid_ratio]
+            mutual_ref_idx = mutual_ref_idx[valid_ratio]
+
+    pts_src = centers_src[mutual_src_idx]
+    pts_ref = centers_ref[mutual_ref_idx]
 
     return pts_src.astype(np.float32), pts_ref.astype(np.float32)

@@ -87,6 +87,8 @@ class Pair:
                     # Accept only if it carries at least one recognised metadata key
                     if isinstance(data, dict) and _METADATA_KEYS & set(data.keys()):
                         _log.debug(f"Loaded JSON sidecar: {json_candidate}")
+                        data["_is_inferred"] = False
+                        data["_metadata_source"] = "json_sidecar"
                         return data
                 except Exception:
                     pass
@@ -96,16 +98,22 @@ class Pair:
                 candidate = path.with_suffix(ext)
                 if candidate.exists():
                     try:
-                        import pvl
+                        import importlib
+                        pvl = importlib.import_module("pvl")
                         lbl = dict(pvl.load(str(candidate)))
                         _log.debug(f"Loaded PDS label: {candidate}")
+                        lbl["_is_inferred"] = False
+                        lbl["_metadata_source"] = "pds_label"
                         return lbl
                     except Exception:
                         pass
 
             # --- 4. Name-based heuristic inference --------------------------
             name_upper = path.name.upper()
-            inferred: dict = {}
+            inferred: dict = {
+                "_is_inferred": True,
+                "_metadata_source": "filename_inferred",
+            }
             if "OHRC" in name_upper:
                 inferred["INSTRUMENT_ID"] = "OHRC"
                 inferred["MAP_SCALE"] = 0.25
@@ -122,9 +130,10 @@ class Pair:
                 inferred["INSTRUMENT_ID"] = "LRO_WAC"
                 inferred["MAP_SCALE"] = 100.0
 
-            if inferred:
+            if len(inferred) > 2:
                 _log.debug(f"Name-inferred metadata for {path.name}: {inferred}")
-            return inferred
+                return inferred
+            return {}
 
         ref_p = Path(ref)
         mov_p = Path(mov)
@@ -132,19 +141,19 @@ class Pair:
         ref_lbl_dict = ref_label if ref_label is not None else _find_label(ref_p)
         mov_lbl_dict = mov_label if mov_label is not None else _find_label(mov_p)
 
-        ref_meta = extract_metadata(ref_lbl_dict)
-        mov_meta = extract_metadata(mov_lbl_dict)
+        ref_meta = extract_metadata(ref_lbl_dict, allow_approximate_fallback=True)
+        mov_meta = extract_metadata(mov_lbl_dict, allow_approximate_fallback=True)
 
         # ── Verification log: always print real values so silent defaults are visible
         _log.info(
             f"ref_meta  | sensor={ref_meta.sensor_id!r:10s}  "
             f"az={ref_meta.sun_azimuth:6.1f}°  el={ref_meta.sun_elevation:5.1f}°  "
-            f"gsd={ref_meta.gsd_m:.3f} m/px"
+            f"gsd={ref_meta.gsd_m:.3f} m/px  src={ref_meta.metadata_source}"
         )
         _log.info(
             f"mov_meta  | sensor={mov_meta.sensor_id!r:10s}  "
             f"az={mov_meta.sun_azimuth:6.1f}°  el={mov_meta.sun_elevation:5.1f}°  "
-            f"gsd={mov_meta.gsd_m:.3f} m/px"
+            f"gsd={mov_meta.gsd_m:.3f} m/px  src={mov_meta.metadata_source}"
         )
 
         return cls(
@@ -158,8 +167,12 @@ class Pair:
 
     @property
     def delta_sun_az(self) -> float:
-        """Absolute sun-azimuth difference between reference and moving image (°)."""
-        return abs(self.ref_meta.sun_azimuth - self.mov_meta.sun_azimuth)
+        """Circular angular difference between reference and moving sun azimuth (°).
+
+        Distance on circle [0, 360): min(|a-b| % 360, 360 - (|a-b| % 360)).
+        """
+        d = abs(float(self.ref_meta.sun_azimuth) - float(self.mov_meta.sun_azimuth)) % 360.0
+        return min(d, 360.0 - d)
 
     @property
     def gsd_ratio(self) -> float:
@@ -177,5 +190,5 @@ class Pair:
     def __repr__(self) -> str:  # noqa: D105
         return (
             f"Pair(ref={self.ref_path.name!r}, mov={self.mov_path.name!r}, "
-            f"Δaz={self.delta_sun_az:.1f}°, gsd_ratio={self.gsd_ratio:.2f})"
+            f"d_az={self.delta_sun_az:.1f} deg, gsd_ratio={self.gsd_ratio:.2f})"
         )

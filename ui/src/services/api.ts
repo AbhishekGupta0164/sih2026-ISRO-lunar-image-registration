@@ -7,8 +7,8 @@
  */
 import { MatcherType, RegistrationResults } from '../types';
 
-// UI-1 fix: fall back to localhost:8000 so local dev works out-of-the-box
-export const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000/api/v1';
+// Default to relative /api/v1 so the Vite dev server proxy seamlessly handles requests without CORS
+export const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || '/api/v1';
 
 export interface PipelineStepCallback {
   (stepIndex: number, message: string, percent: number): void;
@@ -63,7 +63,7 @@ export class SeleneApiService {
   }
 
   public getReportUrl(jobId: string): string {
-    return `${this.baseUrl}/api/v1/jobs/${jobId}/report.pdf`;
+    return `${this.baseUrl}/jobs/${jobId}/report.pdf`;
   }
 
   // ── Health ────────────────────────────────────────────────────────────────
@@ -364,8 +364,12 @@ export class SeleneApiService {
 
   /** Build a full download URL for a product file. */
   public productUrl(path: string): string {
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    if (!this.baseUrl.startsWith('http://') && !this.baseUrl.startsWith('https://')) {
+      return cleanPath;
+    }
     const origin = this.baseUrl.replace(/\/api\/v1\/?$/, '');
-    return `${origin}${path.startsWith('/') ? path : `/${path}`}`;
+    return `${origin}${cleanPath}`;
   }
 }
 

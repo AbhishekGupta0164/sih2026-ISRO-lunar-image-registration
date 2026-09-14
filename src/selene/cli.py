@@ -14,7 +14,9 @@ import datetime
 import json
 import shutil
 import zipfile
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import numpy as np
 import cv2
 
@@ -22,16 +24,15 @@ from selene.config import PipelineConfig, load_config
 from selene.utils.logging import setup_logging, get_logger
 from selene.ingest.pair import Pair
 from selene.ingest.geotiff_reader import read_geotiff
-from selene.ingest.pds_reader import read_pds3, read_pds4
+from selene.ingest.pds_reader import read_pds3, read_pds4, read_raster_canonical
 from selene.geometry.pyramid import resample_to_gsd, upscale_coordinates, match_coarse_to_fine_pyramid
 from selene.geometry.mapproject_tier2 import crop_reference_to_pair
 from selene.illum.shadow_mask import detect_shadows
 from selene.matchers.gate import route_and_match
 from selene.robust.magsac import find_homography_magsac
 from selene.robust.uniform_sampler import sample_uniform_gcps
-from selene.warp.subpixel_lk import refine_subpixel_lk
-from selene.warp.tps import warp_tps
-from selene.warp.piecewise_affine import piecewise_affine_warp
+from selene.warp.subpixel_lk import refine_subpixel_cascade
+from selene.warp.model_fit import fit_final_transformation, RegistrationFailureError
 from selene.warp.export_geotiff import export_geotiff
 from selene.eval.metrics import compute_metrics, MetricsResult
 from selene.eval.plots import plot_checkerboard, plot_quiver, plot_coverage_heatmap, plot_residual_heatmap
@@ -40,30 +41,13 @@ from selene.utils.seeding import set_reproducible_seed
 
 
 def load_image_any(path: str | Path) -> tuple[np.ndarray, object | None, object | None]:
-    """Load image from GeoTIFF or common image formats (PNG, JPG, TIFF)."""
+    """Load image from GeoTIFF, PDS3, PDS4, or common image formats using canonical raster reader."""
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"Image not found: {path}")
 
-    # Try GeoTIFF via rasterio first
-    if p.suffix.lower() in (".tif", ".tiff", ".geotif", ".geotiff"):
-        try:
-            arr, crs, transform, _ = read_geotiff(p)
-            return arr, crs, transform
-        except Exception:
-            pass
-
-    # Standard image format fallback via OpenCV
-    # Use IMREAD_UNCHANGED to preserve 16-bit radiometric depth (REG-3 fix)
-    img = cv2.imread(str(p), cv2.IMREAD_UNCHANGED)
-    if img is None:
-        raise ValueError(f"Could not decode image: {p}")
-    # Convert multi-channel to grayscale if needed
-    if img.ndim == 3:
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    img_f = img.astype(np.float32)
-    arr = (img_f - img_f.min()) / (img_f.max() - img_f.min() + 1e-6)
-    return arr, None, None
+    arr, crs, transform, _ = read_raster_canonical(p)
+    return arr, crs, transform
 
 
 def run_pipeline(
@@ -106,10 +90,10 @@ def run_pipeline(
     img_ref, crs_ref, trans_ref = load_image_any(ref_path)
 
     # Footprint geometry pre-cropping if footprint metadata available
-    if pair.mov_meta.footprint_wkt:
-        img_ref = crop_reference_to_pair(img_ref, trans_ref, pair.mov_meta.footprint_wkt)
+    if pair.mov_meta.footprint_wkt and trans_ref is not None:
+        img_ref, trans_ref, _ = crop_reference_to_pair(img_ref, trans_ref, pair.mov_meta.footprint_wkt)
 
-    log.info(f"Stage 1 Ingest: src_shape={img_src.shape}, ref_shape={img_ref.shape}, Δaz={pair.delta_sun_az:.1f}°, gsd_ratio={pair.gsd_ratio:.2f}")
+    log.info(f"Stage 1 Ingest: src_shape={img_src.shape}, ref_shape={img_ref.shape}, delta_az={pair.delta_sun_az:.1f} deg, gsd_ratio={pair.gsd_ratio:.2f}")
 
     # ── Stage 2: GSD Pyramid Scale Equalization ──────────────────────────────
     _notify(0.25, "Stage 2: Constructing multi-scale Gaussian pyramids & resampling to uniform GSD")
@@ -152,7 +136,7 @@ def run_pipeline(
     # ── Stage 5: Robust Fit & Shadow-Aware Uniform GCP Sampling ─────────────
     _notify(0.65, "Stage 5: USAC_MAGSAC++ robust geometry fitting & outlier filtering")
     time.sleep(0.4)
-    # REG-5 fix: convert threshold from metres to pixels using reference GSD
+    # Convert threshold from metres to pixels using reference GSD
     magsac_threshold_px = config.magsac_threshold_m / max(pair.ref_meta.gsd_m, 1e-6)
     H_fit, inlier_mask = find_homography_magsac(pts_src_nat, pts_ref_nat, threshold_px=magsac_threshold_px)
     inlier_ratio_pct = (np.sum(inlier_mask) / max(len(pts_src_nat), 1)) * 100.0
@@ -174,10 +158,10 @@ def run_pipeline(
     )
     log.info(f"Stage 5 Uniform Sampler: selected {len(pts_src_gcp)} well-distributed GCPs across 8x8 grid")
 
-    # ── Stage 7: Sub-Pixel Refinement ─────────────────────────────────────────
-    _notify(0.78, "Stage 7: Sub-pixel IC-LK Lucas-Kanade 21x21 refinement")
+    # ── Stage 7: Sub-Pixel Refinement Cascade (IC-LK with ECC fallback) ─────────
+    _notify(0.78, "Stage 7: Sub-pixel IC-LK Lucas-Kanade 21x21 refinement with ECC fallback")
     time.sleep(0.4)
-    pts_src_refined, valid_lk = refine_subpixel_lk(
+    pts_src_refined, valid_lk, ref_methods = refine_subpixel_cascade(
         img_ref=img_ref,
         img_mov=img_src,
         pts_ref=pts_ref_gcp,
@@ -186,56 +170,103 @@ def run_pipeline(
         max_iters=config.lk_max_iter,
         eps=config.lk_eps,
     )
-    pts_src_final = pts_src_refined[valid_lk]
-    pts_ref_final = pts_ref_gcp[valid_lk]
-    
-    # --- P2.1 GCP Confidence Score ---
+    # Points that converged under IC-LK/ECC receive subpixel coordinates;
+    # unrefined inliers retain detector keypoint coordinates.
+    pts_src_final = pts_src_gcp.copy()
+    pts_src_final[valid_lk] = pts_src_refined[valid_lk]
+    pts_ref_final = pts_ref_gcp.copy()
+
+    # Filter canvas boundaries
+    h_m, w_m = img_src.shape[:2]
+    h_r, w_r = img_ref.shape[:2]
+    in_bounds = (
+        (pts_src_final[:, 0] >= 0) & (pts_src_final[:, 0] < w_m) &
+        (pts_src_final[:, 1] >= 0) & (pts_src_final[:, 1] < h_m) &
+        (pts_ref_final[:, 0] >= 0) & (pts_ref_final[:, 0] < w_r) &
+        (pts_ref_final[:, 1] >= 0) & (pts_ref_final[:, 1] < h_r)
+    )
+    pts_src_final = pts_src_final[in_bounds]
+    pts_ref_final = pts_ref_final[in_bounds]
+    n_final_gcps = len(pts_src_final)
+
+    num_subpixel = int(np.sum(valid_lk[in_bounds])) if len(in_bounds) > 0 else 0
+    log.info(f"Stage 7 Refinement: {num_subpixel}/{n_final_gcps} GCPs achieved sub-pixel accuracy (IC-LK/ECC), {n_final_gcps - num_subpixel} retained detector-level accuracy")
+
+    if n_final_gcps < 4:
+        raise RegistrationFailureError(
+            f"Registration failed: insufficient validated GCPs after sub-pixel refinement ({n_final_gcps} points, minimum 4 required). "
+            "Cannot establish a mathematically reliable transformation."
+        )
+
+    # --- GCP Confidence Score ---
     scores_gcp = scores_in[sel_idx] if scores_in is not None else np.ones(len(pts_src_gcp))
-    scores_final = scores_gcp[valid_lk]
-    
-    if H_fit is not None and len(pts_src_final) > 0:
-        ones = np.ones((len(pts_src_final), 1))
+    scores_final = scores_gcp[in_bounds]
+
+    if H_fit is not None and n_final_gcps > 0:
+        ones = np.ones((n_final_gcps, 1))
         homo_src = np.hstack([pts_src_final, ones])
         proj = (H_fit @ homo_src.T).T
         proj_pts = proj[:, :2] / (proj[:, 2:] + 1e-8)
         residuals = np.linalg.norm(proj_pts - pts_ref_final, axis=1)
         res_score = np.clip(1.0 - residuals / 5.0, 0, 1.0)
     else:
-        res_score = np.ones(len(pts_src_final))
-        
-    if shadow_mask_src is not None and np.any(shadow_mask_src > 0) and len(pts_src_final) > 0:
+        res_score = np.ones(n_final_gcps)
+
+    if shadow_mask_src is not None and np.any(shadow_mask_src > 0) and n_final_gcps > 0:
         dist_transform = cv2.distanceTransform((shadow_mask_src == 0).astype(np.uint8), cv2.DIST_L2, 3)
-        x_idx = np.clip(pts_src_final[:, 0].astype(int), 0, dist_transform.shape[1]-1)
-        y_idx = np.clip(pts_src_final[:, 1].astype(int), 0, dist_transform.shape[0]-1)
+        x_idx = np.clip(pts_src_final[:, 0].astype(int), 0, dist_transform.shape[1] - 1)
+        y_idx = np.clip(pts_src_final[:, 1].astype(int), 0, dist_transform.shape[0] - 1)
         dists = dist_transform[y_idx, x_idx]
         dist_score = np.clip(dists / 50.0, 0, 1.0)
     else:
-        dist_score = np.ones(len(pts_src_final))
-        
+        dist_score = np.ones(n_final_gcps)
+
     confidence = (scores_final + res_score + dist_score) / 3.0
-    
-    log.info(f"Sub-pixel refinement validated {len(pts_src_final)} GCPs")
+    lk_count = sum(1 for m in ref_methods if m == "ic_lk")
+    ecc_count = sum(1 for m in ref_methods if m == "ecc")
+    log.info(f"Stage 7 Sub-pixel Refinement: {n_final_gcps} validated GCPs (IC-LK: {lk_count}, ECC fallback: {ecc_count})")
 
-    # ── Stage 6: Warping & Co-Registration ────────────────────────────────────
-    _notify(0.88, "Stage 6: Warping image & exporting GeoTIFF")
+    # ── Stage 6: Independent 80/20 Train/Validation Split & Transformation Fit ──
+    _notify(0.88, "Stage 6: Fitting transformation model & warping raster")
     ref_shape = img_ref.shape[:2]
-    if config.warp_model == "tps" and len(pts_src_final) >= config.min_gcps_for_tps:
-        warped = warp_tps(img_src, pts_src_final, pts_ref_final, output_shape=ref_shape)
-    elif config.warp_model == "piecewise_affine" and len(pts_src_final) >= 4:
-        warped = piecewise_affine_warp(img_src, pts_src_final, pts_ref_final, output_shape=ref_shape)
-    else:
-        # Fallback to homography warp
-        if len(pts_src_final) >= 4:
-            H_final, _ = cv2.findHomography(pts_src_final, pts_ref_final, cv2.RANSAC)
-        elif H_fit is not None:
-            H_final = H_fit
-        else:
-            H_final = None
 
-        if H_final is not None:
-            warped = cv2.warpPerspective(img_src, H_final, (ref_shape[1], ref_shape[0]))
-        else:
-            warped = img_src
+    # Independent 80/20 train/validation split performed BEFORE fitting
+    val_split = 0.20
+    if n_final_gcps >= 5:
+        rng = np.random.RandomState(config.seed if hasattr(config, "seed") else 42)
+        indices = np.arange(n_final_gcps)
+        rng.shuffle(indices)
+        n_val = max(1, int(round(n_final_gcps * val_split)))
+        val_idx = indices[:n_val]
+        train_idx = indices[n_val:]
+        pts_src_train = pts_src_final[train_idx]
+        pts_ref_train = pts_ref_final[train_idx]
+        pts_src_val = pts_src_final[val_idx]
+        pts_ref_val = pts_ref_final[val_idx]
+        confidence_train = confidence[train_idx]
+        confidence_val = confidence[val_idx]
+    else:
+        pts_src_train = pts_src_final
+        pts_ref_train = pts_ref_final
+        pts_src_val = pts_src_final
+        pts_ref_val = pts_ref_final
+        confidence_train = confidence
+        confidence_val = confidence
+
+    # Fit final transformation on training set with fallback cascade (TPS -> PWA -> Homography -> Fail)
+    fitted_model, actual_model_name, fallback_reason = fit_final_transformation(
+        pts_src=pts_src_train,
+        pts_dst=pts_ref_train,
+        requested_model=config.warp_model,
+        min_gcps_for_tps=config.min_gcps_for_tps,
+        output_shape=ref_shape,
+    )
+    if fallback_reason:
+        log.warning(f"Transformation cascade fallback: {fallback_reason}")
+    log.info(f"Stage 6 Model Fit: actual transformation='{actual_model_name}' fitted on {len(pts_src_train)} train GCPs")
+
+    # Warp image with fitted model
+    warped = fitted_model.warp_image(img_src, output_shape=ref_shape)
 
     # Export Warped GeoTIFF / Product
     registered_tif = out_path / "registered.tif"
@@ -245,16 +276,18 @@ def run_pipeline(
         crs=crs_ref,
         transform=trans_ref,
     )
-    # Also export PNG view for UI
+    # Export PNG view for UI
     registered_png = out_path / "registered.png"
     cv2.imwrite(str(registered_png), (warped * 255).clip(0, 255).astype(np.uint8))
 
-    # Save matches CSV
+    # Save matches CSV with real coordinates, split role, and confidence
     matches_csv = out_path / "matches.csv"
     with open(matches_csv, "w") as f:
-        f.write("src_x,src_y,ref_x,ref_y,confidence\n")
-        for (sx, sy), (rx, ry), c in zip(pts_src_final, pts_ref_final, confidence):
-            f.write(f"{sx:.3f},{sy:.3f},{rx:.3f},{ry:.3f},{c:.3f}\n")
+        f.write("src_x,src_y,ref_x,ref_y,confidence,split\n")
+        for (sx, sy), (rx, ry), c in zip(pts_src_train, pts_ref_train, confidence_train):
+            f.write(f"{sx:.3f},{sy:.3f},{rx:.3f},{ry:.3f},{c:.3f},train\n")
+        for (sx, sy), (rx, ry), c in zip(pts_src_val, pts_ref_val, confidence_val):
+            f.write(f"{sx:.3f},{sy:.3f},{rx:.3f},{ry:.3f},{c:.3f},validation\n")
 
     # ── Stage 8: Evaluation & Deliverables ────────────────────────────────────
     _notify(0.96, "Stage 8: Generating metrics, plots & PDF report")
@@ -283,25 +316,39 @@ def run_pipeline(
 
     deep_available = False
     torch_ver = "none"
+    try:
+        import torch
+        torch_ver = torch.__version__
+        deep_available = True
+    except ImportError:
+        pass
 
     provenance = {
         "git_commit": git_commit,
         "seed": config.seed if hasattr(config, "seed") else 42,
         "matcher_used": matcher_name,
+        "requested_warp_model": config.warp_model,
+        "actual_warp_model": actual_model_name,
+        "warp_fallback_reason": fallback_reason,
         "deep_matcher_available": deep_available,
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z",
         "package_versions": {"torch": torch_ver, "opencv": cv2.__version__},
     }
 
+    # Evaluate final transform strictly on holdout validation set
     metrics = compute_metrics(
-        pts_src=pts_src_final,
-        pts_dst=pts_ref_final,
-        gsd_m=pair.mov_meta.gsd_m,
-        H_fit=H_fit,
+        pts_train_src=pts_src_train,
+        pts_train_dst=pts_ref_train,
+        pts_src_val=pts_src_val,
+        pts_dst_val=pts_ref_val,
+        ref_gsd_m=pair.ref_meta.gsd_m,
+        transform_model=fitted_model,
         H_gt=H_gt,
         image_shape=ref_shape,
         shadow_mask=shadow_mask_ref,
+        n_raw_candidates=len(pts_src_w),
         provenance=provenance,
+        final_warp_model=actual_model_name,
     )
 
     metrics_dict = metrics.to_dict()
@@ -337,17 +384,12 @@ def run_pipeline(
         json.dump(metrics_dict, f, indent=2)
 
     # Verification Plots
-    print("DEBUG: starting plot_checkerboard", flush=True)
     p_checker = plot_checkerboard(img_ref, warped, out_path / "plot_checkerboard.png")
-    print("DEBUG: starting plot_quiver", flush=True)
     p_quiver = plot_quiver(pts_src_final, pts_ref_final, out_path / "plot_quiver.png", image_shape=ref_shape)
-    print("DEBUG: starting plot_coverage_heatmap", flush=True)
     p_heatmap = plot_coverage_heatmap(pts_ref_final, out_path / "plot_coverage.png", image_shape=ref_shape)
-    print("DEBUG: starting plot_residual_heatmap", flush=True)
     p_residual = plot_residual_heatmap(pts_src_final, pts_ref_final, out_path / "plot_residual_heatmap.png", image_shape=ref_shape)
 
     # Deliverable PDF
-    print("DEBUG: starting generate_pdf_report", flush=True)
     exec_time = time.time() - t_start
     pdf_report = generate_pdf_report(
         job_dir=out_path,
@@ -362,9 +404,8 @@ def run_pipeline(
         pts_ref=pts_ref_final,
         pts_src=pts_src_final,
     )
-    print("DEBUG: finished generate_pdf_report", flush=True)
 
-    log.info(f"Pipeline completed successfully. RMSE={metrics.rmse_m:.2f} m ({metrics.rmse_px:.2f} px)")
+    log.info(f"Pipeline completed successfully. Train RMSE={metrics.rmse_m:.2f} m ({metrics.rmse_px:.2f} px) | Val RMSE={metrics.rmse_val_m if metrics.rmse_val_m is not None else 0.0:.2f} m")
 
     return {
         "job_id": job_id,
