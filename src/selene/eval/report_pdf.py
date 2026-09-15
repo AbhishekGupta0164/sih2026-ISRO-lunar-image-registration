@@ -159,12 +159,14 @@ def generate_pdf_report(
         if pair is not None:
             if hasattr(pair, "ref_meta") and pair.ref_meta:
                 ref_sensor = pair.ref_meta.sensor_id or "LRO NAC"
-                if pair.ref_meta.solar_azimuth_deg:
-                    ref_sensor += f" ({pair.ref_meta.solar_azimuth_deg:.1f}° Sun Az)"
+                ref_az = getattr(pair.ref_meta, "sun_azimuth", getattr(pair.ref_meta, "solar_azimuth_deg", None))
+                if ref_az is not None:
+                    ref_sensor += f" ({ref_az:.1f}° Sun Az)"
             if hasattr(pair, "mov_meta") and pair.mov_meta:
                 src_sensor = pair.mov_meta.sensor_id or "Chandrayaan-2 OHRC"
-                if pair.mov_meta.solar_azimuth_deg:
-                    src_sensor += f" ({pair.mov_meta.solar_azimuth_deg:.1f}° Sun Az)"
+                mov_az = getattr(pair.mov_meta, "sun_azimuth", getattr(pair.mov_meta, "solar_azimuth_deg", None))
+                if mov_az is not None:
+                    src_sensor += f" ({mov_az:.1f}° Sun Az)"
             if hasattr(pair, "gsd_ratio"):
                 gsd_ratio = pair.gsd_ratio
 
@@ -229,9 +231,12 @@ def generate_pdf_report(
             )
         )
 
-        max_res_px = metrics.max_residual_px if hasattr(metrics, "max_residual_px") and metrics.max_residual_px else metrics.rmse_px * 2.1
+        max_res_px = float(metrics.max_residual_px) if hasattr(metrics, "max_residual_px") and metrics.max_residual_px is not None else float(metrics.rmse_px)
         max_res_m = max_res_px * gsd_m
         active_cells = int(round(metrics.grid_coverage_fraction * 64))
+
+        val_px_str = f"<b>{metrics.rmse_val_px:.4f} px</b>" if metrics.rmse_val_px is not None else "<b>N/A</b>"
+        val_m_str = f"{metrics.rmse_val_m:.4f} m" if metrics.rmse_val_m is not None else "N/A"
 
         calc_rows = [
             [
@@ -248,8 +253,8 @@ def generate_pdf_report(
             ],
             [
                 Paragraph("Val RMSE (80/20 Holdout)", table_cell_style),
-                Paragraph(f"<b>{metrics.rmse_val_px:.4f} px</b>", table_cell_bold),
-                Paragraph(f"{metrics.rmse_val_m:.4f} m", table_cell_style),
+                Paragraph(val_px_str, table_cell_bold),
+                Paragraph(val_m_str, table_cell_style),
                 Paragraph("Independent 80/20 holdout cross-validation RMSE", table_cell_style),
             ],
             [
@@ -303,15 +308,22 @@ def generate_pdf_report(
         elements.append(PageBreak())
 
         # =========================================================================
-        # PAGE 2: TELEMETRY TABLE + AI MATCHER BENCHMARKING & CORRESPONDENCE VISUAL
+        # PAGE 2: TELEMETRY TABLE + MATCHER DIAGNOSTICS & CORRESPONDENCE VISUAL
         # =========================================================================
+
+        warp_model_raw = getattr(metrics, "final_warp_model", "tps")
+        warp_model_label = {
+            "tps": "Thin Plate Spline (Non-Rigid TPS)",
+            "piecewise_affine": "Piecewise Affine Triangulation (PWA)",
+            "homography": "Projective Homography (3x3)",
+        }.get(str(warp_model_raw).lower(), str(warp_model_raw).upper())
 
         telem_rows = [
             [
                 Paragraph("<b>Reference Image (Fixed):</b>", table_cell_bold),
                 Paragraph(f"{ref_name} ({ref_sensor})", table_cell_style),
                 Paragraph("<b>Transformation Model:</b>", table_cell_bold),
-                Paragraph("Tier 2 DEM + Map Projection (TPS)", table_cell_style),
+                Paragraph(warp_model_label, table_cell_style),
             ],
             [
                 Paragraph("<b>Source Image (Moving):</b>", table_cell_bold),
@@ -347,10 +359,10 @@ def generate_pdf_report(
         elements.append(t_telem)
         elements.append(Spacer(1, 10))
 
-        # Section 3: AI Matcher Benchmarking & Correspondence Visual
+        # Section 3: Diagnostic Metrics & Correspondence Visual
         elements.append(
             Paragraph(
-                f"<font color='#0ea5e9'><b>| </b></font><font color='#0f172a'><b>3. AI MATCHER BENCHMARKING &amp; CORRESPONDENCE VISUAL</b></font>",
+                f"<font color='#0ea5e9'><b>| </b></font><font color='#0f172a'><b>3. REGISTRATION ACCURACY &amp; CORRESPONDENCE VISUALIZATION</b></font>",
                 section_h1_style,
             )
         )
@@ -382,47 +394,78 @@ def generate_pdf_report(
             )
             elements.append(Spacer(1, 8))
 
-        # Generate Benchmark Graph
+        # Generate Truthful Metric Diagnostics Chart for this run
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        fig, ax1 = plt.subplots(figsize=(6.5, 2.0), dpi=150)
+        bench_json_path = job_dir / "benchmark_results.json"
+        has_real_bench = False
+        bench_data = None
+        if bench_json_path.exists():
+            try:
+                with open(bench_json_path) as f:
+                    bench_data = json.load(f)
+                if isinstance(bench_data, dict) and "algorithms" in bench_data:
+                    has_real_bench = True
+            except Exception:
+                pass
+
+        fig, ax1 = plt.subplots(figsize=(6.5, 1.8), dpi=150)
         fig.patch.set_facecolor("#ffffff")
         ax1.set_facecolor("#ffffff")
 
-        algorithms = ["LightGlue", "LoFTR", "XFeat", "SIFT"]
-        inlier_ratios = [84.2, 79.5, 68.7, 14.3]
-        rmse_vals = [0.38, 0.55, 0.72, 1.95]
-
-        x = np.arange(len(algorithms))
-        width = 0.32
-
-        rects1 = ax1.bar(x - width/2, inlier_ratios, width, color="#0ea5e9", label="Inlier Ratio (%)")
-        ax1.set_ylabel("Inlier Ratio (%)", color="#0f172a", fontweight="bold", fontsize=8)
-        ax1.set_ylim(0, 100)
-        ax1.tick_params(axis="y", labelsize=7.5)
-        ax1.grid(axis="y", linestyle="--", alpha=0.3)
-
-        ax2 = ax1.twinx()
-        rects2 = ax2.bar(x + width/2, rmse_vals, width, color="#10b981", label="RMSE (px) (Lower is Better)")
-        ax2.set_ylabel("RMSE (px)", color="#0f172a", fontweight="bold", fontsize=8)
-        ax2.set_ylim(0, 2.5)
-        ax2.tick_params(axis="y", labelsize=7.5)
-
-        ax1.set_xticks(x)
-        ax1.set_xticklabels(algorithms, fontweight="bold", fontsize=8)
-
-        lines1, labels1 = ax1.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax2.legend(lines1 + lines2, labels1 + labels2, loc="upper center", bbox_to_anchor=(0.5, 1.22), ncol=2, frameon=False, fontsize=7.5)
+        if has_real_bench and bench_data:
+            alg_names = bench_data.get("algorithms", [])
+            inlier_ratios = bench_data.get("inlier_ratios", [])
+            rmse_vals = bench_data.get("rmse_px", [])
+            x = np.arange(len(alg_names))
+            width = 0.32
+            ax1.bar(x - width/2, inlier_ratios, width, color="#0ea5e9", label="Inlier Ratio (%)")
+            ax1.set_ylabel("Inlier Ratio (%)", color="#0f172a", fontweight="bold", fontsize=7.5)
+            ax1.set_ylim(0, 100)
+            ax1.grid(axis="y", linestyle="--", alpha=0.3)
+            ax2 = ax1.twinx()
+            ax2.bar(x + width/2, rmse_vals, width, color="#10b981", label="RMSE (px)")
+            ax2.set_ylabel("RMSE (px)", color="#0f172a", fontweight="bold", fontsize=7.5)
+            ax1.set_xticks(x)
+            ax1.set_xticklabels(alg_names, fontweight="bold", fontsize=7.5)
+            lines1, labels1 = ax1.get_legend_handles_labels()
+            lines2, labels2 = ax2.get_legend_handles_labels()
+            ax2.legend(lines1 + lines2, labels1 + labels2, loc="upper center", bbox_to_anchor=(0.5, 1.25), ncol=2, frameon=False, fontsize=7)
+        else:
+            # Empirical diagnostic summary of the current executed run
+            metric_labels = ["Consensus Inliers", "Spatial Coverage", "Train RMSE", "Val RMSE", "CE90 Precision"]
+            val_rmse_val = metrics.rmse_val_px if metrics.rmse_val_px is not None else metrics.rmse_px
+            metric_values = [
+                float(metrics.inlier_ratio * 100.0),
+                float(metrics.grid_coverage_fraction * 100.0),
+                float(metrics.rmse_px),
+                float(val_rmse_val),
+                float(metrics.ce90_px),
+            ]
+            colors_bar = ["#0ea5e9", "#06b6d4", "#10b981", "#34d399", "#f59e0b"]
+            bars = ax1.bar(metric_labels, metric_values, color=colors_bar, width=0.45)
+            ax1.set_ylabel("Value (%, px)", color="#0f172a", fontweight="bold", fontsize=7.5)
+            ax1.grid(axis="y", linestyle="--", alpha=0.3)
+            ax1.tick_params(axis="x", labelsize=7.5)
+            for bar in bars:
+                h = bar.get_height()
+                ax1.annotate(
+                    f"{h:.2f}",
+                    xy=(bar.get_x() + bar.get_width() / 2, h),
+                    xytext=(0, 2),
+                    textcoords="offset points",
+                    ha="center", va="bottom", fontsize=6.5, fontweight="bold",
+                )
+            ax1.set_title(f"Measured Run Verification Metrics ({matcher_display})", fontsize=8, fontweight="bold", pad=8)
 
         plt.tight_layout()
         bench_plot_path = job_dir / "benchmark_graph.png"
         plt.savefig(bench_plot_path, dpi=150, bbox_inches="tight")
         plt.close(fig)
 
-        elements.append(RLImage(str(bench_plot_path), width=530, height=130))
+        elements.append(RLImage(str(bench_plot_path), width=530, height=125))
         elements.append(PageBreak())
 
         # =========================================================================
@@ -527,6 +570,8 @@ def generate_pdf_report(
         return pdf_path
 
     except (ImportError, Exception) as exc:
+        import logging
+        logging.getLogger("selene.eval.report_pdf").warning(f"PDF generation exception: {exc}", exc_info=True)
         # Fallback to text report if reportlab is unavailable
         txt_path = job_dir / "registration_report.txt"
         with open(txt_path, "w") as f:

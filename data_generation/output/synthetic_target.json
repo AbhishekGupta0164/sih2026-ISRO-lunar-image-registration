@@ -2,8 +2,8 @@
   "sensor_id": "OHRC",
   "sun_azimuth_deg": 284.3,
   "sun_elevation_deg": 32.1,
-  "gsd_m": 0.25,
-  "MAP_SCALE": 0.25,
+  "gsd_m": 0.5435,
+  "MAP_SCALE": 0.5435,
   "SOLAR_AZIMUTH": 284.3,
   "SOLAR_ELEVATION": 32.1
 }

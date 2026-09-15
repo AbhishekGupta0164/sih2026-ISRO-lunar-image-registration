@@ -52,26 +52,26 @@ def crop_reference_to_pair(
     ref_array: np.ndarray,
     ref_transform: object | None,
     mov_footprint_wkt: str,
-) -> np.ndarray:
+) -> tuple[np.ndarray, object | None, tuple[float, float, float, float] | None]:
     """Crop the reference image to the bounding box of the moving image footprint.
 
-    Falls back to returning *ref_array* unchanged if shapely / rasterio are
-    unavailable or if *mov_footprint_wkt* is empty.
+    Updates the affine transform to account for pixel coordinate offsets (c1, r1).
 
     Args:
         ref_array:         Reference image array (H × W float32).
-        ref_transform:     rasterio Affine transform for the reference.
+        ref_transform:     rasterio.Affine transform for the reference raster.
         mov_footprint_wkt: WKT POLYGON of the moving image footprint.
 
     Returns:
-        Cropped (or original) reference array.
+        (cropped_array, updated_transform, bounds_tuple)
     """
     if not mov_footprint_wkt:
-        return ref_array
+        return ref_array, ref_transform, None
 
     try:
         from shapely import wkt as shapely_wkt
         import rasterio.transform as rt
+        from rasterio.transform import Affine
 
         geom = shapely_wkt.loads(mov_footprint_wkt)
         minx, miny, maxx, maxy = geom.bounds
@@ -88,8 +88,11 @@ def crop_reference_to_pair(
             c1 = max(0, min(cols))
             c2 = min(ref_array.shape[1], max(cols))
             if r2 > r1 and c2 > c1:
-                return ref_array[r1:r2, c1:c2]
+                cropped = ref_array[r1:r2, c1:c2]
+                new_transform = ref_transform * Affine.translation(c1, r1)
+                return cropped, new_transform, (minx, miny, maxx, maxy)
     except Exception:
-        pass   # shapely or rasterio unavailable — return unchanged
+        pass
 
-    return ref_array
+    return ref_array, ref_transform, None
+

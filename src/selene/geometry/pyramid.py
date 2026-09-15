@@ -147,16 +147,20 @@ def match_coarse_to_fine_pyramid(
     ref_gsd = pair.ref_meta.gsd_m
     common_gsd_m = max(ref_gsd, mov_gsd)
 
-    # 1. Resample both images to coarsest common GSD level
-    img_src_coarse = resample_to_gsd(img_src, mov_gsd, common_gsd_m)
-    img_ref_coarse = resample_to_gsd(img_ref, ref_gsd, common_gsd_m)
+    # 1. Resample to coarsest common GSD level only if GSDs differ significantly
+    if abs(mov_gsd - common_gsd_m) / max(common_gsd_m, 1e-6) < 0.05 and abs(ref_gsd - common_gsd_m) / max(common_gsd_m, 1e-6) < 0.05:
+        img_src_coarse = img_src
+        img_ref_coarse = img_ref
+    else:
+        img_src_coarse = resample_to_gsd(img_src, mov_gsd, common_gsd_m)
+        img_ref_coarse = resample_to_gsd(img_ref, ref_gsd, common_gsd_m)
 
     # Coarse stage match
     pts_s_c, pts_r_c, scores_c, matcher_name = route_and_match_fn(
         img_src_coarse, img_ref_coarse, pair, config
     )
 
-    matcher_label = f"pyramid_{matcher_name}" if pair.gsd_ratio > 1.0 else matcher_name
+    matcher_label = f"pyramid_{matcher_name}" if pair.gsd_ratio > 1.05 else matcher_name
     return pts_s_c, pts_r_c, scores_c, matcher_label
 
 
