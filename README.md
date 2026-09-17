@@ -13,7 +13,6 @@ Reference: **LRO NAC** or **LRO WAC**.
 |                |                                                                                                                                       |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Workbench (UI) | [sih2026-lunar-image-registration.vercel.app](https://sih2026-lunar-image-registration.vercel.app/)                                   |
-| Repo           | [AbhishekGupta0164/sih2026-ISRO-lunar-image-registration](https://github.com/AbhishekGupta0164/sih2026-ISRO-lunar-image-registration) |
 | License        | [MIT](LICENSE)                                                                                                                        |
 | Runtime        | Python 3.11+, Node 18+ for the UI. CPU is enough.                                                                                     |
 
@@ -34,13 +33,12 @@ The Vercel site is the React workbench. A full registration job talks to FastAPI
 6. [Evaluation metrics](#6-evaluation-metrics)
 7. [Repository layout](#7-repository-layout)
 8. [Install](#8-install)
-9. [CLI](#9-cli)
-10. [API and workbench](#10-api-and-workbench)
-11. [Tests](#11-tests)
-12. [Data](#12-data)
-13. [Stack](#13-stack)
-14. [Docs](#14-docs)
-15. [License](#15-license)
+9. [API and workbench](#10-api-and-workbench)
+10. [Tests](#11-tests)
+11. [Data](#12-data)
+12. [Stack](#13-stack)
+13. [Docs](#14-docs)
+14. [License](#15-license)
 
 ---
 
@@ -265,36 +263,7 @@ docker compose up --build
 ---
 
 
-
-## 9. CLI
-
-Git does **not** ship full OHRC/NAC rasters. Generate a pair with known transform, then run:
-
-```bash
-python -m data_generation.generate_synthetic_pair
-
-selene run \
-  --src data_generation/output/synthetic_target.png \
-  --ref data_generation/output/reference.png \
-  --out products/job_001
-
-selene eval --job products/job_001
-selene export --job products/job_001 --zip products/bundle.zip
-```
-
-Flight data, same interface:
-
-```bash
-selene run --src /path/to/ohrc.tif --ref /path/to/nac.tif --out products/job_ch2
-```
-
-Optional `--config path/to.yaml` overlays `PipelineConfig`.
-
----
-
-
-
-## 10. API and workbench
+## 9. API and workbench
 
 ```bash
 uvicorn api.main:app --reload --port 8000          # terminal 1
@@ -321,7 +290,7 @@ Open [http://localhost:5173](http://localhost:5173)
 
 
 
-## 11. Tests
+## 10. Tests
 
 ```bash
 pytest tests/ -v
@@ -341,7 +310,7 @@ Also in `tests/`: LoFTR / XFeat / device / geometry / matcher bench. For a visua
 
 
 
-## 12. Data
+## 11. Data
 
 `data/download_samples.sh` currently prints the four intended demo cases (OHRC↔NAC similar sun, TMC↔NAC scale, IIRS↔WAC cross-modal, opposite azimuth). Fill in product IDs after ISSDC/LROC accounts exist. Until then use `data_generation/` or files you already downloaded.
 
@@ -360,7 +329,7 @@ Usage of those products follows ISRO / NASA public-data terms, not the MIT licen
 
 
 
-## 13. Stack
+## 12. Stack
 
 All of this is ordinary open-source. No paid CV SDK, no required cloud call after install.
 
@@ -383,7 +352,7 @@ ISIS3, Ames Stereo Pipeline, and spiceypy are optional Tier-1 geometry. Default 
 
 
 
-## 14. Docs
+## 13. Docs
 
 
 | Path                                                                                   | Topic                         |
@@ -393,13 +362,11 @@ ISIS3, Ames Stereo Pipeline, and spiceypy are optional Tier-1 geometry. Default 
 | [docs/metrics.md](docs/metrics.md)                                                     | RMSE, inliers, NNI, coverage  |
 | [docs/Project_Report.md](docs/Project_Report.md)                                       | Longer narrative              |
 | [docs/COMPARATIVE_ANALYSIS_AND_BENEFITS.md](docs/COMPARATIVE_ANALYSIS_AND_BENEFITS.md) | Baseline discussion           |
-| [UI_REDESIGN.md](UI_REDESIGN.md)                                                       | Workbench UI notes            |
-
 
 ---
 
 
 
-## 15. License
+## 14. License
 
 Code in this repository: MIT (see [LICENSE](LICENSE)). Third-party wheels keep their own licences (BSD / Apache / MIT). Chandrayaan-2 and LRO imagery remain under ISRO / NASA data policy.
