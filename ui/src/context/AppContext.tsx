@@ -660,7 +660,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               addLog(`[Stage 3/9 Illumination] Phase congruency edge extraction & Wallis adaptive contrast filter (32×32 window). Shadow mask segmenting high-incidence craters (< 0.05).`, 'info');
               break;
             case 3:
-              addLog(`[Stage 4/9 Gate Router] Solar geometry evaluated (Δ Azimuth = 142.2°). Dispatched expert neural matcher: ${label}.`, 'info');
+              addLog(`[Stage 4/9 Gate Router] Evaluating orbital solar geometry and sensor modality. Dispatched expert matcher: ${label}.`, 'info');
               break;
             case 4:
               addLog(`[Stage 5/9 Matcher Core] Running ${label} dense correspondence extractor. Calculating cross-attention feature vectors and candidate keypoints.`, 'info');

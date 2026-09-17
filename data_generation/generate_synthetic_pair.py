@@ -231,13 +231,14 @@ def create_synthetic_pair(
     cv2.imwrite(target_path, synthetic_target)
     print(f"[SUCCESS] Saved synthetic target image: {target_path}")
 
-    # Save moving metadata sidecar
+    # Save moving metadata sidecar (GSD matches reference GSD scaled by geometric transform scale)
+    mov_gsd = round(0.50 / scale, 4)
     mov_meta = {
         "sensor_id": "OHRC",
         "sun_azimuth_deg": mov_sun_az,
         "sun_elevation_deg": mov_sun_el,
-        "gsd_m": 0.25,
-        "MAP_SCALE": 0.25,
+        "gsd_m": mov_gsd,
+        "MAP_SCALE": mov_gsd,
         "SOLAR_AZIMUTH": mov_sun_az,
         "SOLAR_ELEVATION": mov_sun_el,
     }
@@ -262,7 +263,7 @@ def create_synthetic_pair(
             "ref_sun_elevation_deg": ref_sun_el,
             "mov_sun_azimuth_deg": mov_sun_az,
             "mov_sun_elevation_deg": mov_sun_el,
-            "delta_sun_azimuth_deg": abs(ref_sun_az - mov_sun_az),
+            "delta_sun_azimuth_deg": min(abs(ref_sun_az - mov_sun_az), 360.0 - abs(ref_sun_az - mov_sun_az)),
         },
         "affine_matrix_2x3": M.tolist(),
         "homography_matrix_3x3": H_gt.tolist(),

@@ -14,17 +14,21 @@ def match_phase_correlation(
     img_src: np.ndarray,
     img_ref: np.ndarray,
     upsample_factor: int = 10,
-    grid_points: int = 16,
+    max_features: int = 2000,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Compute sub-pixel translation offset using FFT Phase Cross-Correlation.
+    """Compute translation prior via FFT Phase Cross-Correlation and extract real feature matches.
 
-    Generates synthetic grid correspondence pairs shifted by the detected global translation (dy, dx).
+    Phase correlation estimates the global translation (dy, dx). The source image is coarsely
+    shifted by this prior, and actual local feature correspondences (SIFT) are extracted
+    and mapped back to native source pixel coordinates.
+
+    NEVER generates synthetic regular grid points.
 
     Args:
-        img_src: Source image.
-        img_ref: Reference image.
-        upsample_factor: Sub-pixel upsampling factor.
-        grid_points: Number of regular points along each dimension to sample correspondences.
+        img_src: Source moving image.
+        img_ref: Reference fixed image.
+        upsample_factor: Sub-pixel FFT upsampling factor.
+        max_features: Maximum SIFT features to detect on shifted image.
 
     Returns:
         (pts_src, pts_ref, scores)
@@ -38,44 +42,61 @@ def match_phase_correlation(
         src_f = _to_2d(img_src)
         ref_f = _to_2d(img_ref)
 
-        # If shapes differ, resample src_f to ref_f shape for phase correlation
+        # Resample src_f to ref_f shape for phase correlation if shapes differ
         if src_f.shape != ref_f.shape:
             src_eval = cv2.resize(src_f, (ref_f.shape[1], ref_f.shape[0]), interpolation=cv2.INTER_LINEAR)
+            scale_y = ref_f.shape[0] / src_f.shape[0]
+            scale_x = ref_f.shape[1] / src_f.shape[1]
         else:
             src_eval = src_f
+            scale_y = 1.0
+            scale_x = 1.0
 
-        # Calculate global shift: shift = (dy, dx)
+        # Calculate global shift: shift = (dy, dx) such that ref ~ src_eval shifted
         shift, error, _ = phase_cross_correlation(
             ref_f,
             src_eval,
-            upsample_factor=upsample_factor
+            upsample_factor=upsample_factor,
         )
-        dy, dx = float(shift[0]), float(shift[1])
+        dy_eval, dx_eval = float(shift[0]), float(shift[1])
+        # Convert shift to original source coordinates
+        dy = dy_eval / scale_y
+        dx = dx_eval / scale_x
 
-        # Sample regular grid points on src and project to ref
-        h, w = img_src.shape[:2]
-        ys = np.linspace(h * 0.1, h * 0.9, grid_points, dtype=np.float32)
-        xs = np.linspace(w * 0.1, w * 0.9, grid_points, dtype=np.float32)
-        gx, gy = np.meshgrid(xs, ys)
-
-        pts_src = np.stack([gx.ravel(), gy.ravel()], axis=1)
-        pts_ref = pts_src + np.array([dx, dy], dtype=np.float32)
-
-        # Filter out points that fall outside reference boundaries
-        valid = (
-            (pts_ref[:, 0] >= 0)
-            & (pts_ref[:, 0] < w)
-            & (pts_ref[:, 1] >= 0)
-            & (pts_ref[:, 1] < h)
+        # Apply translation prior: shift img_src by (dx, dy)
+        h_s, w_s = src_f.shape[:2]
+        M_shift = np.array([[1.0, 0.0, dx], [0.0, 1.0, dy]], dtype=np.float32)
+        shifted_src = cv2.warpAffine(
+            src_f,
+            M_shift,
+            (w_s, h_s),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REFLECT,
         )
 
-        pts_src = pts_src[valid]
-        pts_ref = pts_ref[valid]
+        # Extract real feature correspondences between shifted source and reference
+        pts_s_shifted, pts_r, scores = match_sift(shifted_src, ref_f, n_features=max_features)
 
-        if len(pts_src) >= 4:
-            confidence = float(max(0.1, 1.0 - float(error)))
-            scores = np.full(len(pts_src), confidence, dtype=np.float32)
-            return pts_src, pts_ref, scores
+        if len(pts_s_shifted) >= 4:
+            # Map coordinates on shifted image back to native source image coordinates:
+            # (x_shifted, y_shifted) = (x_src + dx, y_src + dy) => (x_src, y_src) = (x_shifted - dx, y_shifted - dy)
+            pts_src = pts_s_shifted.copy()
+            pts_src[:, 0] -= dx
+            pts_src[:, 1] -= dy
+
+            # Filter points that fall within valid source image boundaries
+            valid = (
+                (pts_src[:, 0] >= 0)
+                & (pts_src[:, 0] < w_s)
+                & (pts_src[:, 1] >= 0)
+                & (pts_src[:, 1] < h_s)
+            )
+            pts_src = pts_src[valid]
+            pts_ref = pts_r[valid]
+            scores = scores[valid]
+
+            if len(pts_src) >= 4:
+                return pts_src.astype(np.float32), pts_ref.astype(np.float32), scores.astype(np.float32)
 
     except Exception:
         pass

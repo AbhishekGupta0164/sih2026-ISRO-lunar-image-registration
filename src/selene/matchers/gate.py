@@ -66,6 +66,10 @@ def route_and_match(
     # retain CPU as the safe default for those callers.
     device = config.device if config is not None else "cpu"
 
+    import logging
+    _log = logging.getLogger("selene.matchers.gate")
+    _log.info(f"Gate routing decision: strategy='{strategy}' for Δaz={pair.delta_sun_az:.1f}°, gsd_ratio={pair.gsd_ratio:.2f}, cross_sensor={pair.is_cross_sensor}")
+
     if strategy == "crater_graph":
         # Preprocess with Phase Congruency or Relighting to overcome polarity flip
         craters_src = detect_craters(img_src)
